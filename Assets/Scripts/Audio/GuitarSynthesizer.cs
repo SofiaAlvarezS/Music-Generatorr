@@ -44,11 +44,6 @@ public class GuitarSynthesizer : MonoBehaviour
     [Header("Audio")]
     public int sampleRate = 44100;
 
-
-    // =========================================================
-    // GENERAR NOTA
-    // =========================================================
-
     public AudioClip GenerateNote(
         float frequency,
         float duration
@@ -71,11 +66,6 @@ public class GuitarSynthesizer : MonoBehaviour
 
             return null;
         }
-
-
-        // -----------------------------------------------------
-        // DURACIÓN TOTAL
-        // -----------------------------------------------------
 
         float totalDuration =
             duration + release;
@@ -101,10 +91,6 @@ public class GuitarSynthesizer : MonoBehaviour
             new float[sampleCount];
 
 
-        // =====================================================
-        // BUFFER DE LA CUERDA
-        // =====================================================
-
         int delaySamples =
             Mathf.Max(
                 2,
@@ -118,10 +104,6 @@ public class GuitarSynthesizer : MonoBehaviour
             new float[delaySamples];
 
 
-        // =====================================================
-        // EXCITACIÓN DE LA CUERDA
-        // =====================================================
-
         for (int i = 0; i < delaySamples; i++)
         {
             float noise =
@@ -131,10 +113,6 @@ public class GuitarSynthesizer : MonoBehaviour
                 noise * noiseAmount;
         }
 
-
-        // =====================================================
-        // FILTRO DE LA CUERDA
-        // =====================================================
 
         float filterAlpha =
             1f -
@@ -149,19 +127,11 @@ public class GuitarSynthesizer : MonoBehaviour
         float previousOutput = 0f;
 
 
-        // =====================================================
-        // GENERACIÓN
-        // =====================================================
-
         for (int i = 0; i < sampleCount; i++)
         {
             float time =
                 (float)i / sampleRate;
 
-
-            // -------------------------------------------------
-            // POSICIÓN EN EL BUFFER
-            // -------------------------------------------------
 
             int index =
                 i % delaySamples;
@@ -171,10 +141,6 @@ public class GuitarSynthesizer : MonoBehaviour
                 (index + 1) % delaySamples;
 
 
-            // -------------------------------------------------
-            // LEER LA CUERDA
-            // -------------------------------------------------
-
             float current =
                 stringBuffer[index];
 
@@ -182,10 +148,6 @@ public class GuitarSynthesizer : MonoBehaviour
             float next =
                 stringBuffer[nextIndex];
 
-
-            // -------------------------------------------------
-            // FEEDBACK
-            // -------------------------------------------------
 
             float averaged =
                 0.5f *
@@ -199,17 +161,9 @@ public class GuitarSynthesizer : MonoBehaviour
                 averaged;
 
 
-            // -------------------------------------------------
-            // SEÑAL DE CUERDA
-            // -------------------------------------------------
-
             float sample =
                 current;
 
-
-            // -------------------------------------------------
-            // FILTRO LOW PASS
-            // -------------------------------------------------
 
             previousOutput =
                 previousOutput +
@@ -220,10 +174,6 @@ public class GuitarSynthesizer : MonoBehaviour
             sample =
                 previousOutput;
 
-
-            // -------------------------------------------------
-            // ATAQUE DE PÚA
-            // -------------------------------------------------
 
             if (time < 0.02f)
             {
@@ -244,10 +194,6 @@ public class GuitarSynthesizer : MonoBehaviour
             }
 
 
-            // -------------------------------------------------
-            // ENVELOPE ADSR
-            // -------------------------------------------------
-
             float envelope =
                 GetEnvelope(
                     time,
@@ -258,18 +204,10 @@ public class GuitarSynthesizer : MonoBehaviour
             sample *= envelope;
 
 
-            // -------------------------------------------------
-            // GUARDAR
-            // -------------------------------------------------
-
             samples[i] =
                 sample;
         }
 
-
-        // =====================================================
-        // RESONANCIA DEL CUERPO
-        // =====================================================
 
         if (bodyAmount > 0f)
         {
@@ -287,18 +225,10 @@ public class GuitarSynthesizer : MonoBehaviour
         }
 
 
-        // =====================================================
-        // NORMALIZACIÓN
-        // =====================================================
-
         NormalizeSamples(
             samples
         );
 
-
-        // =====================================================
-        // GUARDAR AUDIO
-        // =====================================================
 
         clip.SetData(
             samples,
@@ -310,19 +240,12 @@ public class GuitarSynthesizer : MonoBehaviour
     }
 
 
-    // =========================================================
-    // ADSR
-    // =========================================================
-
     private float GetEnvelope(
         float time,
         float noteDuration
     )
     {
-        // -----------------------------------------------------
-        // ATTACK
-        // -----------------------------------------------------
-
+    
         if (time < attack)
         {
             if (attack <= 0f)
@@ -332,11 +255,6 @@ public class GuitarSynthesizer : MonoBehaviour
 
             return time / attack;
         }
-
-
-        // -----------------------------------------------------
-        // DECAY
-        // -----------------------------------------------------
 
         if (time < attack + decay)
         {
@@ -357,20 +275,10 @@ public class GuitarSynthesizer : MonoBehaviour
             );
         }
 
-
-        // -----------------------------------------------------
-        // SUSTAIN
-        // -----------------------------------------------------
-
         if (time < noteDuration)
         {
             return sustain;
         }
-
-
-        // -----------------------------------------------------
-        // RELEASE
-        // -----------------------------------------------------
 
         float releaseTime =
             time - noteDuration;
@@ -399,10 +307,6 @@ public class GuitarSynthesizer : MonoBehaviour
         return 0f;
     }
 
-
-    // =========================================================
-    // NORMALIZACIÓN
-    // =========================================================
 
     private void NormalizeSamples(
         float[] samples

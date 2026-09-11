@@ -17,10 +17,6 @@ public class DrumSynthesizer : MonoBehaviour
     public float hiHatLevel = 0.45f;
 
 
-    // =========================================================
-    // GENERAR SONIDO SEGÚN MIDI
-    // =========================================================
-
     public AudioClip GenerateDrum(
         int midiNote,
         float duration,
@@ -58,10 +54,6 @@ public class DrumSynthesizer : MonoBehaviour
         }
     }
 
-
-    // =========================================================
-    // KICK
-    // =========================================================
 
     private AudioClip GenerateKick(
         float duration,
@@ -146,11 +138,6 @@ public class DrumSynthesizer : MonoBehaviour
         return clip;
     }
 
-
-    // =========================================================
-    // SNARE
-    // =========================================================
-
     private AudioClip GenerateSnare(
         float duration,
         float velocity
@@ -228,10 +215,6 @@ public class DrumSynthesizer : MonoBehaviour
         return clip;
     }
 
-
-    // =========================================================
-    // CLOSED HI-HAT
-    // =========================================================
 
     private AudioClip GenerateClosedHiHat(
         float duration,
@@ -319,11 +302,6 @@ public class DrumSynthesizer : MonoBehaviour
 
         return clip;
     }
-
-
-    // =========================================================
-    // NORMALIZACIÓN
-    // =========================================================
 
     private void Normalize(
         float[] samples

@@ -15,7 +15,7 @@ public class MusicXMLReader : MonoBehaviour
         string filePath = Path.Combine(
             Application.dataPath,
             "Music",
-            "prueba.musicxml"
+            "prueba2.musicxml"
         );
 
         if (!File.Exists(filePath))

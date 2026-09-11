@@ -3,16 +3,8 @@ using UnityEngine;
 
 public class MusicPlayer : MonoBehaviour
 {
-    // =========================================================
-    // REFERENCIA AL LECTOR
-    // =========================================================
-
+  
     public MusicXMLReader musicReader;
-
-
-    // =========================================================
-    // INSTRUMENTO
-    // =========================================================
 
     public enum InstrumentType
     {
@@ -24,18 +16,9 @@ public class MusicPlayer : MonoBehaviour
     public InstrumentType instrument;
 
 
-    // =========================================================
-    // SINTETIZADORES
-    // =========================================================
-
     [Header("Sintetizadores")]
     public GuitarSynthesizer guitarSynthesizer;
     public BassSynthesizer bassSynthesizer;
-
-
-    // =========================================================
-    // AUDIO
-    // =========================================================
 
     [Header("Audio")]
     [Range(0f, 1f)]
@@ -43,11 +26,6 @@ public class MusicPlayer : MonoBehaviour
 
 
     private AudioSource audioSource;
-
-
-    // =========================================================
-    // INICIO
-    // =========================================================
 
     private void Start()
     {
@@ -72,13 +50,7 @@ public class MusicPlayer : MonoBehaviour
             WaitForMusicData()
         );
     }
-
-
-    // =========================================================
-    // ESPERAR MUSIC DATA
-    // =========================================================
-
-    private IEnumerator WaitForMusicData()
+private IEnumerator WaitForMusicData()
     {
         Debug.Log(
             "MusicPlayer esperando MusicData..."
@@ -101,11 +73,6 @@ public class MusicPlayer : MonoBehaviour
             PlayMusic()
         );
     }
-
-
-    // =========================================================
-    // REPRODUCCIÓN
-    // =========================================================
 
     private IEnumerator PlayMusic()
     {
@@ -151,10 +118,6 @@ public class MusicPlayer : MonoBehaviour
                     );
 
 
-                // =================================================
-                // SILENCIO
-                // =================================================
-
                 if (note.isRest)
                 {
                     Debug.Log(
@@ -173,10 +136,6 @@ public class MusicPlayer : MonoBehaviour
                 }
 
 
-                // =================================================
-                // NOTA
-                // =================================================
-
                 Debug.Log(
                     "Nota: " +
                     note.step +
@@ -186,8 +145,7 @@ public class MusicPlayer : MonoBehaviour
                 );
 
 
-                // Reproducir usando el sintetizador
-                // seleccionado
+                // Reproducir usando el sintetizador seleccionado
                 PlayNote(
                     note,
                     duration
@@ -215,10 +173,6 @@ public class MusicPlayer : MonoBehaviour
     }
 
 
-    // =========================================================
-    // REPRODUCIR NOTA
-    // =========================================================
-
     private void PlayNote(
         NoteData note,
         float duration
@@ -233,11 +187,6 @@ public class MusicPlayer : MonoBehaviour
 
 
         AudioClip clip = null;
-
-
-        // =====================================================
-        // ELEGIR INSTRUMENTO
-        // =====================================================
 
         switch (instrument)
         {
@@ -291,11 +240,6 @@ public class MusicPlayer : MonoBehaviour
             return;
         }
 
-
-        // =====================================================
-        // REPRODUCCIÓN
-        // =====================================================
-
         audioSource.clip =
             clip;
 
@@ -305,10 +249,6 @@ public class MusicPlayer : MonoBehaviour
         audioSource.Play();
     }
 
-
-    // =========================================================
-    // DURACIÓN MUSICXML → SEGUNDOS
-    // =========================================================
 
     private float GetDurationInSeconds(
         NoteData note
@@ -352,10 +292,6 @@ public class MusicPlayer : MonoBehaviour
                quarterNoteDuration;
     }
 
-
-    // =========================================================
-    // NOTA → FRECUENCIA
-    // =========================================================
 
     private float GetFrequency(
         string noteName,
