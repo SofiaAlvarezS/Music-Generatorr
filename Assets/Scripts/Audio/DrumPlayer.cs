@@ -1,5 +1,7 @@
+
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Audio;
 
 public class DrumPlayer : MonoBehaviour
 {
@@ -10,12 +12,10 @@ public class DrumPlayer : MonoBehaviour
 
     public DrumSynthesizer drumSynthesizer;
 
-
     [Header("Tempo")]
     public bool useMusicXMLTempo = true;
 
     public float bpm = 120f;
-
 
     [Header("Reproducción")]
     public bool playOnStart = true;
@@ -23,9 +23,11 @@ public class DrumPlayer : MonoBehaviour
     [Range(0f, 1f)]
     public float volume = 0.8f;
 
+    [Header("Audio Mixer")]
+    [Tooltip("Grupo del Mixer al que se enviarán los golpes.")]
+    public AudioMixerGroup playbackMixerGroup;
 
     private DrumPattern pattern;
-
 
     private void Start()
     {
@@ -39,7 +41,6 @@ public class DrumPlayer : MonoBehaviour
             return;
         }
 
-
         if (drumSynthesizer == null)
         {
             Debug.LogError(
@@ -50,11 +51,8 @@ public class DrumPlayer : MonoBehaviour
             return;
         }
 
-
-        // Generar patrón
         pattern =
             patternGenerator.GenerateBasicPattern();
-
 
         Debug.Log(
             "Patrón de batería generado. " +
@@ -62,20 +60,15 @@ public class DrumPlayer : MonoBehaviour
             pattern.notes.Count
         );
 
-
         if (playOnStart)
         {
             if (musicReader != null)
             {
-                StartCoroutine(
-                    WaitForMusicData()
-                );
+                StartCoroutine(WaitForMusicData());
             }
             else
             {
-                StartCoroutine(
-                    PlayPattern()
-                );
+                StartCoroutine(PlayPattern());
             }
         }
     }
@@ -86,25 +79,25 @@ public class DrumPlayer : MonoBehaviour
             "DrumPlayer esperando MusicData..."
         );
 
-
         while (!musicReader.isReady)
         {
             yield return null;
         }
 
-
         Debug.Log(
             "MusicData lista."
         );
 
-
-        // Obtener tempo
         if (useMusicXMLTempo)
         {
             bpm =
                 musicReader.musicData.tempo;
         }
 
+        if (bpm <= 0f)
+        {
+            bpm = 120f;
+        }
 
         Debug.Log(
             "Tempo utilizado por batería: " +
@@ -112,12 +105,8 @@ public class DrumPlayer : MonoBehaviour
             " BPM"
         );
 
-
-        StartCoroutine(
-            PlayPattern()
-        );
+        StartCoroutine(PlayPattern());
     }
-
 
     private IEnumerator PlayPattern()
     {
@@ -131,14 +120,10 @@ public class DrumPlayer : MonoBehaviour
             bpm = 120f;
         }
 
-
         float secondsPerBeat =
             60f / bpm;
 
-
-        float currentTime =
-            0f;
-
+        float currentTime = 0f;
 
         pattern.notes.Sort(
             (a, b) =>
@@ -146,7 +131,6 @@ public class DrumPlayer : MonoBehaviour
                     b.position
                 )
         );
-
 
         Debug.Log(
             "================================"
@@ -165,7 +149,6 @@ public class DrumPlayer : MonoBehaviour
             "================================"
         );
 
-
         foreach (
             DrumNoteData note
             in pattern.notes
@@ -175,25 +158,18 @@ public class DrumPlayer : MonoBehaviour
                 note.position -
                 currentTime;
 
-
             if (waitTime > 0f)
             {
                 yield return new WaitForSeconds(
-                    waitTime *
-                    secondsPerBeat
+                    waitTime * secondsPerBeat
                 );
             }
 
-
-            PlayDrumNote(
-                note
-            );
-
+            PlayDrumNote(note);
 
             currentTime =
                 note.position;
         }
-
 
         Debug.Log(
             "Batería terminada."
@@ -211,12 +187,10 @@ public class DrumPlayer : MonoBehaviour
                 note.velocity
             );
 
-
         if (clip == null)
         {
             return;
         }
-
 
         GameObject drumObject =
             new GameObject(
@@ -224,25 +198,34 @@ public class DrumPlayer : MonoBehaviour
                 note.midiNote
             );
 
-
         drumObject.transform.parent =
             transform;
-
 
         AudioSource source =
             drumObject.AddComponent<AudioSource>();
 
+        source.clip = clip;
+        source.volume = volume;
+        source.playOnAwake = false;
 
-        source.clip =
-            clip;
+        if (playbackMixerGroup != null)
+        {
+            source.outputAudioMixerGroup =
+                playbackMixerGroup;
 
-
-        source.volume =
-            volume;
-
+            Debug.Log(
+                "DrumPlayer: AudioSource conectado al grupo " +
+                playbackMixerGroup.name
+            );
+        }
+        else
+        {
+            Debug.LogWarning(
+                "DrumPlayer: no hay un AudioMixerGroup asignado."
+            );
+        }
 
         source.Play();
-
 
         Destroy(
             drumObject,
@@ -258,9 +241,7 @@ public class DrumPlayer : MonoBehaviour
                 patternGenerator.GenerateBasicPattern();
         }
 
-
         StopAllCoroutines();
-
 
         if (
             useMusicXMLTempo &&
@@ -272,10 +253,22 @@ public class DrumPlayer : MonoBehaviour
                 musicReader.musicData.tempo;
         }
 
+        StartCoroutine(PlayPattern());
+    }
 
-        StartCoroutine(
-            PlayPattern()
-        );
+    public void StopPlayback()
+    {
+        StopAllCoroutines();
+
+        AudioSource[] sources =
+            GetComponentsInChildren<AudioSource>();
+
+        foreach (AudioSource source in sources)
+        {
+            if (source != null)
+            {
+                source.Stop();
+            }
+        }
     }
 }
-
