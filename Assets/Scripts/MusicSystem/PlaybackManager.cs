@@ -1,8 +1,6 @@
-
-using UnityEngine;
+Ôªøusing UnityEngine;
 using UnityEngine.Audio;
 
-[RequireComponent(typeof(AudioSource))]
 public class PlaybackManager : MonoBehaviour
 {
     public enum PlaybackType
@@ -17,17 +15,16 @@ public class PlaybackManager : MonoBehaviour
     public DrumPlayer drumPlayer;
 
     [Header("Instrumento")]
-    public PlaybackType playbackType;
+    public PlaybackType playbackType =
+        PlaybackType.Guitar;
 
-    [Header("ReproducciÛn")]
-    public bool playOnStart = true;
+    [Header("Reproducci√≥n")]
+    public bool playOnStart = false;
 
     [Header("Audio Mixer")]
-    [Tooltip("Grupo del Mixer al que se enviar· el audio de reproducciÛn.")]
     public AudioMixerGroup playbackMixerGroup;
 
     [Header("AudioSource del Manager")]
-    [Tooltip("Se asigna autom·ticamente si est· vacÌo.")]
     public AudioSource playbackAudioSource;
 
     [Range(0f, 1f)]
@@ -38,6 +35,7 @@ public class PlaybackManager : MonoBehaviour
     private void Awake()
     {
         EnsureAudioSource();
+
         ConfigureManagerAudioSource();
 
         ConfigurePlayerAudioSources();
@@ -60,30 +58,27 @@ public class PlaybackManager : MonoBehaviour
             Play();
         }
     }
+
     private void EnsureAudioSource()
     {
         if (playbackAudioSource == null)
         {
-            playbackAudioSource = GetComponent<AudioSource>();
+            playbackAudioSource =
+                GetComponent<AudioSource>();
         }
 
         if (playbackAudioSource == null)
         {
-            playbackAudioSource = gameObject.AddComponent<AudioSource>();
-
-            Debug.Log(
-                "PlaybackManager: se creÛ un AudioSource autom·ticamente."
-            );
+            playbackAudioSource =
+                gameObject.AddComponent<AudioSource>();
         }
     }
+
+
     private void ConfigureManagerAudioSource()
     {
         if (playbackAudioSource == null)
         {
-            Debug.LogError(
-                "PlaybackManager: no se encontrÛ el AudioSource."
-            );
-
             return;
         }
 
@@ -92,17 +87,22 @@ public class PlaybackManager : MonoBehaviour
         playbackAudioSource.volume = volume;
         playbackAudioSource.mute = mute;
 
-        AssignMixerGroup(playbackAudioSource);
+        AssignMixerGroup(
+            playbackAudioSource
+        );
     }
+
 
     private void ConfigurePlayerAudioSources()
     {
         if (musicPlayer != null)
         {
-            AudioSource[] musicSources =
-                musicPlayer.GetComponentsInChildren<AudioSource>(true);
+            AudioSource[] sources =
+                musicPlayer.GetComponentsInChildren<AudioSource>(
+                    true
+                );
 
-            foreach (AudioSource source in musicSources)
+            foreach (AudioSource source in sources)
             {
                 AssignMixerGroup(source);
             }
@@ -110,44 +110,74 @@ public class PlaybackManager : MonoBehaviour
 
         if (drumPlayer != null)
         {
-            AudioSource[] drumSources =
-                drumPlayer.GetComponentsInChildren<AudioSource>(true);
+            AudioSource[] sources =
+                drumPlayer.GetComponentsInChildren<AudioSource>(
+                    true
+                );
 
-            foreach (AudioSource source in drumSources)
+            foreach (AudioSource source in sources)
             {
                 AssignMixerGroup(source);
             }
         }
     }
 
-    private void AssignMixerGroup(AudioSource source)
+
+    private void AssignMixerGroup(
+        AudioSource source
+    )
     {
         if (source == null)
         {
             return;
         }
 
-        if (playbackMixerGroup == null)
+        if (playbackMixerGroup != null)
         {
-            Debug.LogWarning(
-                "PlaybackManager: no hay un AudioMixerGroup asignado."
-            );
-
-            return;
+            source.outputAudioMixerGroup =
+                playbackMixerGroup;
         }
+    }
 
-        source.outputAudioMixerGroup = playbackMixerGroup;
+    public void SetPlaybackType(
+        PlaybackType type
+    )
+    {
+        playbackType = type;
 
         Debug.Log(
-            "PlaybackManager: AudioSource '" +
-            source.name +
-            "' conectado al grupo '" +
-            playbackMixerGroup.name +
-            "'."
+            "PlaybackManager ‚Üí Instrumento seleccionado: " +
+            playbackType
         );
     }
+
+
+    public void SetGuitar()
+    {
+        SetPlaybackType(
+            PlaybackType.Guitar
+        );
+    }
+
+
+    public void SetBass()
+    {
+        SetPlaybackType(
+            PlaybackType.Bass
+        );
+    }
+
+
+    public void SetDrums()
+    {
+        SetPlaybackType(
+            PlaybackType.Drums
+        );
+    }
+
     public void Play()
     {
+        // PLAY siempre empieza una reproducci√≥n nueva
         StopAllPlayback();
 
         switch (playbackType)
@@ -157,7 +187,8 @@ public class PlaybackManager : MonoBehaviour
                 if (musicPlayer == null)
                 {
                     Debug.LogError(
-                        "PlaybackManager: MusicPlayer no asignado."
+                        "PlaybackManager: " +
+                        "MusicPlayer no est√° asignado."
                     );
 
                     return;
@@ -168,14 +199,21 @@ public class PlaybackManager : MonoBehaviour
 
                 musicPlayer.enabled = true;
 
+                Debug.Log(
+                    "PlaybackManager ‚Üí " +
+                    "Reproduciendo GUITARRA"
+                );
+
                 break;
+
 
             case PlaybackType.Bass:
 
                 if (musicPlayer == null)
                 {
                     Debug.LogError(
-                        "PlaybackManager: MusicPlayer no asignado."
+                        "PlaybackManager: " +
+                        "MusicPlayer no est√° asignado."
                     );
 
                     return;
@@ -186,20 +224,68 @@ public class PlaybackManager : MonoBehaviour
 
                 musicPlayer.enabled = true;
 
+                Debug.Log(
+                    "PlaybackManager ‚Üí " +
+                    "Reproduciendo BAJO"
+                );
+
                 break;
+
 
             case PlaybackType.Drums:
 
                 if (drumPlayer == null)
                 {
                     Debug.LogError(
-                        "PlaybackManager: DrumPlayer no asignado."
+                        "PlaybackManager: " +
+                        "DrumPlayer no est√° asignado."
                     );
 
                     return;
                 }
 
                 drumPlayer.enabled = true;
+
+                Debug.Log(
+                    "PlaybackManager ‚Üí " +
+                    "Reproduciendo BATER√çA"
+                );
+
+                break;
+        }
+    }
+
+    public void Pausar()
+    {
+        switch (playbackType)
+        {
+            case PlaybackType.Guitar:
+            case PlaybackType.Bass:
+
+                if (musicPlayer != null &&
+                    musicPlayer.enabled)
+                {
+                    musicPlayer.PausePlayback();
+
+                    Debug.Log(
+                        "PlaybackManager ‚Üí PAUSA"
+                    );
+                }
+
+                break;
+
+
+            case PlaybackType.Drums:
+
+                if (drumPlayer != null &&
+                    drumPlayer.enabled)
+                {
+                    drumPlayer.PausePlayback();
+
+                    Debug.Log(
+                        "PlaybackManager ‚Üí PAUSA"
+                    );
+                }
 
                 break;
         }
@@ -208,17 +294,24 @@ public class PlaybackManager : MonoBehaviour
     public void Stop()
     {
         StopAllPlayback();
+
+        Debug.Log(
+            "PlaybackManager ‚Üí DETENIDO"
+        );
     }
+
 
     private void StopAllPlayback()
     {
         if (musicPlayer != null)
         {
+            musicPlayer.StopPlayback();
             musicPlayer.enabled = false;
         }
 
         if (drumPlayer != null)
         {
+            drumPlayer.StopPlayback();
             drumPlayer.enabled = false;
         }
 
@@ -227,48 +320,124 @@ public class PlaybackManager : MonoBehaviour
             playbackAudioSource.Stop();
         }
     }
-    public void SetVolume(float newVolume)
+
+    public void SetVolume(
+        float newVolume
+    )
     {
-        volume = Mathf.Clamp01(newVolume);
+        volume =
+            Mathf.Clamp01(newVolume);
 
         if (playbackAudioSource != null)
         {
-            playbackAudioSource.volume = volume;
+            playbackAudioSource.volume =
+                volume;
+        }
+
+        if (musicPlayer != null)
+        {
+            AudioSource[] sources =
+                musicPlayer.GetComponentsInChildren<AudioSource>(
+                    true
+                );
+
+            foreach (AudioSource source in sources)
+            {
+                source.volume =
+                    volume;
+            }
+        }
+
+        if (drumPlayer != null)
+        {
+            AudioSource[] sources =
+                drumPlayer.GetComponentsInChildren<AudioSource>(
+                    true
+                );
+
+            foreach (AudioSource source in sources)
+            {
+                source.volume =
+                    volume;
+            }
         }
     }
 
-    public void SetMute(bool shouldMute)
+    public void SetMute(
+        bool shouldMute
+    )
     {
-        mute = shouldMute;
+        mute =
+            shouldMute;
 
         if (playbackAudioSource != null)
         {
-            playbackAudioSource.mute = mute;
+            playbackAudioSource.mute =
+                mute;
+        }
+
+        if (musicPlayer != null)
+        {
+            AudioSource[] sources =
+                musicPlayer.GetComponentsInChildren<AudioSource>(
+                    true
+                );
+
+            foreach (AudioSource source in sources)
+            {
+                source.mute =
+                    mute;
+            }
+        }
+
+        if (drumPlayer != null)
+        {
+            AudioSource[] sources =
+                drumPlayer.GetComponentsInChildren<AudioSource>(
+                    true
+                );
+
+            foreach (AudioSource source in sources)
+            {
+                source.mute =
+                    mute;
+            }
         }
     }
 
     public AudioSource GetPlaybackAudioSource()
     {
-        EnsureAudioSource();
-
         return playbackAudioSource;
     }
 
-    public void RouteAudioSource(AudioSource source)
+
+    public void RouteAudioSource(
+        AudioSource source
+    )
     {
-        AssignMixerGroup(source);
-    }
-    private void OnValidate()
-    {
-        if (playbackAudioSource == null)
+        if (source == null)
         {
-            playbackAudioSource = GetComponent<AudioSource>();
+            return;
         }
 
-        if (playbackAudioSource != null)
+        AssignMixerGroup(source);
+
+        source.volume =
+            volume;
+
+        source.mute =
+            mute;
+    }
+
+    private void OnValidate()
+    {
+        volume =
+            Mathf.Clamp01(volume);
+
+        if (Application.isPlaying)
         {
-            playbackAudioSource.volume = volume;
-            playbackAudioSource.mute = mute;
+            SetVolume(volume);
+            SetMute(mute);
         }
     }
 }

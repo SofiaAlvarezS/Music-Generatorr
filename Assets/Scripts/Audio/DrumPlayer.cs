@@ -1,5 +1,5 @@
-
-using System.Collections;
+ï»¿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
 
@@ -12,22 +12,34 @@ public class DrumPlayer : MonoBehaviour
 
     public DrumSynthesizer drumSynthesizer;
 
+
     [Header("Tempo")]
     public bool useMusicXMLTempo = true;
 
     public float bpm = 120f;
 
-    [Header("Reproducción")]
+
+    [Header("ReproducciÃ³n")]
     public bool playOnStart = true;
 
     [Range(0f, 1f)]
     public float volume = 0.8f;
 
+
     [Header("Audio Mixer")]
-    [Tooltip("Grupo del Mixer al que se enviarán los golpes.")]
+    [Tooltip("Grupo del Mixer al que se enviarÃ¡n los golpes.")]
     public AudioMixerGroup playbackMixerGroup;
 
+
     private DrumPattern pattern;
+
+    private bool isPaused = false;
+    private bool isPlaying = false;
+
+
+    // Guarda los AudioSources de los golpes que estÃ¡n sonando
+    private List<AudioSource> activeSources =
+        new List<AudioSource>();
 
     private void Start()
     {
@@ -41,6 +53,7 @@ public class DrumPlayer : MonoBehaviour
             return;
         }
 
+
         if (drumSynthesizer == null)
         {
             Debug.LogError(
@@ -51,24 +64,31 @@ public class DrumPlayer : MonoBehaviour
             return;
         }
 
+
         pattern =
             patternGenerator.GenerateBasicPattern();
 
+
         Debug.Log(
-            "Patrón de batería generado. " +
+            "PatrÃ³n de baterÃ­a generado. " +
             "Eventos: " +
             pattern.notes.Count
         );
+
 
         if (playOnStart)
         {
             if (musicReader != null)
             {
-                StartCoroutine(WaitForMusicData());
+                StartCoroutine(
+                    WaitForMusicData()
+                );
             }
             else
             {
-                StartCoroutine(PlayPattern());
+                StartCoroutine(
+                    PlayPattern()
+                );
             }
         }
     }
@@ -79,14 +99,17 @@ public class DrumPlayer : MonoBehaviour
             "DrumPlayer esperando MusicData..."
         );
 
+
         while (!musicReader.isReady)
         {
             yield return null;
         }
 
+
         Debug.Log(
             "MusicData lista."
         );
+
 
         if (useMusicXMLTempo)
         {
@@ -94,36 +117,43 @@ public class DrumPlayer : MonoBehaviour
                 musicReader.musicData.tempo;
         }
 
+
         if (bpm <= 0f)
         {
             bpm = 120f;
         }
 
+
         Debug.Log(
-            "Tempo utilizado por batería: " +
+            "Tempo utilizado por baterÃ­a: " +
             bpm +
             " BPM"
         );
 
-        StartCoroutine(PlayPattern());
+
+        StartCoroutine(
+            PlayPattern()
+        );
     }
 
     private IEnumerator PlayPattern()
     {
         if (bpm <= 0f)
         {
-            Debug.LogWarning(
-                "BPM inválido. " +
-                "Se utilizarán 120 BPM."
-            );
-
             bpm = 120f;
         }
+
+
+        isPlaying = true;
+        isPaused = false;
+
 
         float secondsPerBeat =
             60f / bpm;
 
+
         float currentTime = 0f;
+
 
         pattern.notes.Sort(
             (a, b) =>
@@ -132,12 +162,13 @@ public class DrumPlayer : MonoBehaviour
                 )
         );
 
+
         Debug.Log(
             "================================"
         );
 
         Debug.Log(
-            "INICIANDO BATERÍA"
+            "INICIANDO BATERÃA"
         );
 
         Debug.Log(
@@ -149,6 +180,7 @@ public class DrumPlayer : MonoBehaviour
             "================================"
         );
 
+
         foreach (
             DrumNoteData note
             in pattern.notes
@@ -158,22 +190,48 @@ public class DrumPlayer : MonoBehaviour
                 note.position -
                 currentTime;
 
+
             if (waitTime > 0f)
             {
-                yield return new WaitForSeconds(
+                yield return WaitWithPause(
                     waitTime * secondsPerBeat
                 );
             }
 
+
             PlayDrumNote(note);
+
 
             currentTime =
                 note.position;
         }
 
+
+        isPlaying = false;
+
+
         Debug.Log(
-            "Batería terminada."
+            "BaterÃ­a terminada."
         );
+    }
+
+    private IEnumerator WaitWithPause(
+        float duration
+    )
+    {
+        float remaining = duration;
+
+
+        while (remaining > 0f)
+        {
+            if (!isPaused)
+            {
+                remaining -= Time.deltaTime;
+            }
+
+
+            yield return null;
+        }
     }
 
     private void PlayDrumNote(
@@ -187,10 +245,12 @@ public class DrumPlayer : MonoBehaviour
                 note.velocity
             );
 
+
         if (clip == null)
         {
             return;
         }
+
 
         GameObject drumObject =
             new GameObject(
@@ -198,39 +258,70 @@ public class DrumPlayer : MonoBehaviour
                 note.midiNote
             );
 
+
         drumObject.transform.parent =
             transform;
 
+
         AudioSource source =
             drumObject.AddComponent<AudioSource>();
+
 
         source.clip = clip;
         source.volume = volume;
         source.playOnAwake = false;
 
+
         if (playbackMixerGroup != null)
         {
             source.outputAudioMixerGroup =
                 playbackMixerGroup;
+        }
 
-            Debug.Log(
-                "DrumPlayer: AudioSource conectado al grupo " +
-                playbackMixerGroup.name
-            );
-        }
-        else
-        {
-            Debug.LogWarning(
-                "DrumPlayer: no hay un AudioMixerGroup asignado."
-            );
-        }
+
+        activeSources.Add(source);
+
 
         source.Play();
 
-        Destroy(
-            drumObject,
-            clip.length + 0.05f
+
+        StartCoroutine(
+            DestroyDrumSourceWhenFinished(
+                drumObject,
+                source,
+                clip.length
+            )
         );
+    }
+
+    private IEnumerator DestroyDrumSourceWhenFinished(
+        GameObject drumObject,
+        AudioSource source,
+        float duration
+    )
+    {
+        float remaining = duration;
+
+
+        while (remaining > 0f)
+        {
+            if (!isPaused)
+            {
+                remaining -= Time.deltaTime;
+            }
+
+
+            yield return null;
+        }
+
+
+        activeSources.Remove(source);
+
+
+        if (drumObject != null)
+        {
+            Destroy(drumObject);
+        }
     }
 
     public void Play()
@@ -241,7 +332,13 @@ public class DrumPlayer : MonoBehaviour
                 patternGenerator.GenerateBasicPattern();
         }
 
+
         StopAllCoroutines();
+
+
+        isPaused = false;
+        isPlaying = false;
+
 
         if (
             useMusicXMLTempo &&
@@ -253,22 +350,95 @@ public class DrumPlayer : MonoBehaviour
                 musicReader.musicData.tempo;
         }
 
-        StartCoroutine(PlayPattern());
+
+        StartCoroutine(
+            PlayPattern()
+        );
+    }
+
+    public void PausePlayback()
+    {
+        if (!isPlaying)
+            return;
+
+
+        isPaused = true;
+
+
+        foreach (
+            AudioSource source
+            in activeSources
+        )
+        {
+            if (source != null)
+            {
+                source.Pause();
+            }
+        }
+
+
+        Debug.Log(
+            "DrumPlayer â†’ PAUSADO"
+        );
+    }
+    public void ResumePlayback()
+    {
+        if (!isPlaying)
+            return;
+
+
+        isPaused = false;
+
+
+        foreach (
+            AudioSource source
+            in activeSources
+        )
+        {
+            if (source != null)
+            {
+                source.UnPause();
+            }
+        }
+
+
+        Debug.Log(
+            "DrumPlayer â†’ REANUDADO"
+        );
     }
 
     public void StopPlayback()
     {
+        isPaused = false;
+        isPlaying = false;
+
+
         StopAllCoroutines();
 
-        AudioSource[] sources =
-            GetComponentsInChildren<AudioSource>();
 
-        foreach (AudioSource source in sources)
+        AudioSource[] sources =
+            GetComponentsInChildren<AudioSource>(
+                true
+            );
+
+
+        foreach (
+            AudioSource source
+            in sources
+        )
         {
             if (source != null)
             {
                 source.Stop();
             }
         }
+
+
+        activeSources.Clear();
+
+
+        Debug.Log(
+            "DrumPlayer â†’ DETENIDO"
+        );
     }
 }

@@ -1,5 +1,6 @@
-﻿
-using System.Collections;
+﻿using System.Collections;
+using System.Collections.Generic;
+using Unity.VisualScripting.Antlr3.Runtime;
 using UnityEngine;
 using UnityEngine.Audio;
 
@@ -30,11 +31,21 @@ public class MusicPlayer : MonoBehaviour
 
     private AudioSource audioSource;
 
+    // Estados de reproducción
+    private bool isPaused = false;
+    private bool isPlaying = false;
+
+
+    // =========================================================
+    // UNITY
+    // =========================================================
+
     private void Awake()
     {
         EnsureAudioSource();
         ConfigureAudioSource();
     }
+
 
     private void Start()
     {
@@ -54,6 +65,7 @@ public class MusicPlayer : MonoBehaviour
         StartCoroutine(WaitForMusicData());
     }
 
+
     private void EnsureAudioSource()
     {
         if (audioSource == null)
@@ -71,12 +83,11 @@ public class MusicPlayer : MonoBehaviour
         }
     }
 
+
     private void ConfigureAudioSource()
     {
         if (audioSource == null)
-        {
             return;
-        }
 
         audioSource.playOnAwake = false;
         audioSource.loop = false;
@@ -86,17 +97,6 @@ public class MusicPlayer : MonoBehaviour
         {
             audioSource.outputAudioMixerGroup =
                 playbackMixerGroup;
-
-            Debug.Log(
-                "MusicPlayer: AudioSource conectado al grupo " +
-                playbackMixerGroup.name
-            );
-        }
-        else
-        {
-            Debug.LogWarning(
-                "MusicPlayer: no hay un AudioMixerGroup asignado."
-            );
         }
     }
 
@@ -118,8 +118,12 @@ public class MusicPlayer : MonoBehaviour
         StartCoroutine(PlayMusic());
     }
 
+
     private IEnumerator PlayMusic()
     {
+        isPlaying = true;
+        isPaused = false;
+
         Debug.Log(
             "===================================="
         );
@@ -137,16 +141,12 @@ public class MusicPlayer : MonoBehaviour
             "===================================="
         );
 
+
         foreach (
             MeasureData measure
             in musicReader.musicData.measures
         )
         {
-            Debug.Log(
-                "Compás " +
-                measure.number
-            );
-
             foreach (
                 NoteData note
                 in measure.notes
@@ -155,32 +155,30 @@ public class MusicPlayer : MonoBehaviour
                 float duration =
                     GetDurationInSeconds(note);
 
+
+                // ---------------------------------------------
+                // SILENCIO
+                // ---------------------------------------------
+
                 if (note.isRest)
                 {
-                    Debug.Log(
-                        "Silencio | " +
-                        duration +
-                        " segundos"
-                    );
-
-                    yield return new WaitForSeconds(duration);
-
+                    yield return WaitWithPause(duration);
                     continue;
                 }
 
-                Debug.Log(
-                    "Nota: " +
-                    note.step +
-                    note.octave +
-                    " | Duración: " +
-                    duration
-                );
+
+                // ---------------------------------------------
+                // NOTA
+                // ---------------------------------------------
 
                 PlayNote(note, duration);
 
-                yield return new WaitForSeconds(duration);
+                yield return WaitWithPause(duration);
             }
         }
+
+
+        isPlaying = false;
 
         Debug.Log(
             "===================================="
@@ -195,6 +193,22 @@ public class MusicPlayer : MonoBehaviour
         );
     }
 
+    private IEnumerator WaitWithPause(float duration)
+    {
+        float remaining = duration;
+
+        while (remaining > 0f)
+        {
+            if (!isPaused)
+            {
+                remaining -= Time.deltaTime;
+            }
+
+            yield return null;
+        }
+    }
+
+
     private void PlayNote(
         NoteData note,
         float duration
@@ -208,6 +222,7 @@ public class MusicPlayer : MonoBehaviour
             );
 
         AudioClip clip = null;
+
 
         switch (instrument)
         {
@@ -230,6 +245,7 @@ public class MusicPlayer : MonoBehaviour
 
                 break;
 
+
             case InstrumentType.Bass:
 
                 if (bassSynthesizer == null)
@@ -250,10 +266,10 @@ public class MusicPlayer : MonoBehaviour
                 break;
         }
 
+
         if (clip == null)
-        {
             return;
-        }
+
 
         if (audioSource == null)
         {
@@ -261,10 +277,67 @@ public class MusicPlayer : MonoBehaviour
             ConfigureAudioSource();
         }
 
+
         audioSource.clip = clip;
         audioSource.volume = volume;
+
         audioSource.Play();
     }
+
+
+    public void PausePlayback()
+    {
+        if (!isPlaying)
+            return;
+
+        isPaused = true;
+
+        if (audioSource != null)
+        {
+            audioSource.Pause();
+        }
+
+        Debug.Log(
+            "MusicPlayer → PAUSADO"
+        );
+    }
+
+    public void ResumePlayback()
+    {
+        if (!isPlaying)
+            return;
+
+        isPaused = false;
+
+        if (audioSource != null)
+        {
+            audioSource.UnPause();
+        }
+
+        Debug.Log(
+            "MusicPlayer → REANUDADO"
+        );
+    }
+
+
+    public void StopPlayback()
+    {
+        isPaused = false;
+        isPlaying = false;
+
+        StopAllCoroutines();
+
+        if (audioSource != null)
+        {
+            audioSource.Stop();
+            audioSource.clip = null;
+        }
+
+        Debug.Log(
+            "MusicPlayer → DETENIDO"
+        );
+    }
+
 
     private float GetDurationInSeconds(
         NoteData note
@@ -278,6 +351,7 @@ public class MusicPlayer : MonoBehaviour
             tempo = 120f;
         }
 
+
         int divisions =
             musicReader.musicData.divisions;
 
@@ -286,11 +360,14 @@ public class MusicPlayer : MonoBehaviour
             divisions = 1;
         }
 
+
         float quarterNoteDuration =
             60f / tempo;
 
+
         float quarterNotes =
             (float)note.duration / divisions;
+
 
         return quarterNotes * quarterNoteDuration;
     }
@@ -302,6 +379,7 @@ public class MusicPlayer : MonoBehaviour
     )
     {
         int semitone;
+
 
         switch (noteName)
         {
@@ -338,28 +416,21 @@ public class MusicPlayer : MonoBehaviour
                 break;
         }
 
+
         int octaveDifference =
             octave - 4;
+
 
         int totalSemitones =
             semitone +
             octaveDifference * 12 +
             alter;
 
+
         return 440f *
                Mathf.Pow(
                    2f,
                    totalSemitones / 12f
                );
-    }
-
-    public void StopPlayback()
-    {
-        StopAllCoroutines();
-
-        if (audioSource != null)
-        {
-            audioSource.Stop();
-        }
     }
 }
