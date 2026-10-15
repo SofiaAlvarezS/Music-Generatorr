@@ -1,6 +1,5 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using Unity.VisualScripting.Antlr3.Runtime;
 using UnityEngine;
 using UnityEngine.Audio;
 
@@ -31,14 +30,8 @@ public class MusicPlayer : MonoBehaviour
 
     private AudioSource audioSource;
 
-    // Estados de reproducción
     private bool isPaused = false;
     private bool isPlaying = false;
-
-
-    // =========================================================
-    // UNITY
-    // =========================================================
 
     private void Awake()
     {
@@ -155,21 +148,11 @@ public class MusicPlayer : MonoBehaviour
                 float duration =
                     GetDurationInSeconds(note);
 
-
-                // ---------------------------------------------
-                // SILENCIO
-                // ---------------------------------------------
-
                 if (note.isRest)
                 {
                     yield return WaitWithPause(duration);
                     continue;
                 }
-
-
-                // ---------------------------------------------
-                // NOTA
-                // ---------------------------------------------
 
                 PlayNote(note, duration);
 
@@ -222,7 +205,6 @@ public class MusicPlayer : MonoBehaviour
             );
 
         AudioClip clip = null;
-
 
         switch (instrument)
         {
@@ -280,7 +262,6 @@ public class MusicPlayer : MonoBehaviour
 
         audioSource.clip = clip;
         audioSource.volume = volume;
-
         audioSource.Play();
     }
 
@@ -380,7 +361,6 @@ public class MusicPlayer : MonoBehaviour
     {
         int semitone;
 
-
         switch (noteName)
         {
             case "C":
@@ -416,16 +396,13 @@ public class MusicPlayer : MonoBehaviour
                 break;
         }
 
-
         int octaveDifference =
             octave - 4;
-
 
         int totalSemitones =
             semitone +
             octaveDifference * 12 +
             alter;
-
 
         return 440f *
                Mathf.Pow(

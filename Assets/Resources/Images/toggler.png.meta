@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 076656c1b1d2e1c409d9f852957c1623
+guid: 9a0f95651dddf054eb7fb54c00051678
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 610379678248422071
-    second: "Dise\xF1o sin t\xEDtulo (7)_0"
+      213: -6695209302257229441
+    second: toggler_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -100,13 +100,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: "Dise\xF1o sin t\xEDtulo (7)_0"
+      name: toggler_0
       rect:
         serializedVersion: 2
-        x: 244
-        y: 149
-        width: 1347
-        height: 843
+        x: 543
+        y: 541
+        width: 576
+        height: 333
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -115,8 +115,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 7ba4d1c5511887800800000000000000
-      internalID: 610379678248422071
+      spriteID: f712112cc96d513a0800000000000000
+      internalID: -6695209302257229441
       vertices: []
       indices: 
       edges: []
@@ -135,7 +135,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      "Dise\xF1o sin t\xEDtulo (7)_0": 610379678248422071
+      toggler_0: -6695209302257229441
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

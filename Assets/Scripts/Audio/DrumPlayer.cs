@@ -36,8 +36,6 @@ public class DrumPlayer : MonoBehaviour
     private bool isPaused = false;
     private bool isPlaying = false;
 
-
-    // Guarda los AudioSources de los golpes que están sonando
     private List<AudioSource> activeSources =
         new List<AudioSource>();
 
