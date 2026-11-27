@@ -4,84 +4,59 @@ using UnityEngine;
 
 public class MusicXMLReader : MonoBehaviour
 {
-
     public MusicData musicData;
-
-    // Indica si el XML ya fue procesado
     public bool isReady = false;
 
+    // Método público para cargar el archivo desde una ruta externa seleccionada
+    public void LoadMusicXMLFromFile(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            Debug.LogError("No se encontró el archivo en la ruta: " + filePath);
+            return;
+        }
+
+        string musicXML = File.ReadAllText(filePath);
+        Debug.Log("Archivo MusicXML leído correctamente desde: " + filePath);
+        ReadXML(musicXML);
+    }
+
+    // (Opcional si quieres mantener tu Start original de prueba)
     private void Start()
     {
         string filePath = Path.Combine(
             Application.dataPath,
-            "Music",
-            "prueba.musicxml"
+            "Music"
         );
 
-        if (!File.Exists(filePath))
+        if (File.Exists(filePath))
         {
-            Debug.LogError(
-                "No se encontró el archivo MusicXML en: " +
-                filePath
-            );
-
-            return;
+            LoadMusicXMLFromFile(filePath);
         }
-
-        string musicXML =
-            File.ReadAllText(filePath);
-
-        Debug.Log(
-            "MusicXML encontrado correctamente."
-        );
-
-        ReadXML(musicXML);
     }
-
 
     private void ReadXML(string musicXML)
     {
-        XmlDocument document =
-            new XmlDocument();
+        XmlDocument document = new XmlDocument();
 
         try
         {
             document.LoadXml(musicXML);
-
-            Debug.Log(
-                "XML cargado correctamente."
-            );
-
-            // Crear modelo musical
             musicData = new MusicData();
 
-            // Leer información general
             ReadTempo(document);
             ReadTimeSignature(document);
             ReadDivisions(document);
-
-            // Leer compases y notas
             ReadMeasures(document);
 
-            // Mostrar información
-            PrintMusicData();
-
-            // Avisar que ya está listo
             isReady = true;
-
-            Debug.Log(
-                "MusicData está lista para ser utilizada."
-            );
+            Debug.Log("MusicData está lista para ser utilizada.");
         }
         catch (System.Exception e)
         {
-            Debug.LogError(
-                "Error al interpretar el XML: " +
-                e.Message
-            );
+            Debug.LogError("Error al interpretar el XML: " + e.Message);
         }
     }
-
 
 
     private void ReadTempo(XmlDocument document)

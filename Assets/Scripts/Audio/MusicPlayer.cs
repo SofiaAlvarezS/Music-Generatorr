@@ -1,18 +1,11 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Audio;
 
 public class MusicPlayer : MonoBehaviour
 {
-    // =========================================================
-    // REFERENCIA AL LECTOR
-    // =========================================================
-
     public MusicXMLReader musicReader;
-
-
-    // =========================================================
-    // INSTRUMENTO
-    // =========================================================
 
     public enum InstrumentType
     {
@@ -23,221 +16,208 @@ public class MusicPlayer : MonoBehaviour
     [Header("Instrumento")]
     public InstrumentType instrument;
 
-
-    // =========================================================
-    // SINTETIZADORES
-    // =========================================================
-
     [Header("Sintetizadores")]
     public GuitarSynthesizer guitarSynthesizer;
     public BassSynthesizer bassSynthesizer;
-
-
-    // =========================================================
-    // AUDIO
-    // =========================================================
 
     [Header("Audio")]
     [Range(0f, 1f)]
     public float volume = 0.5f;
 
+    [Header("Audio Mixer")]
+    public AudioMixerGroup playbackMixerGroup;
 
     private AudioSource audioSource;
 
+    private bool isPaused = false;
+    private bool isPlaying = false;
 
-    // =========================================================
-    // INICIO
-    // =========================================================
+    public bool IsPlaying => isPlaying;
+    public bool IsPaused => isPaused;
+
+    // ==========================================
+    // SINCRONIZACION DSP
+    // ==========================================
+
+    private bool synchronizedPlayback = false;
+
+    private double pauseStartedAt;
+    private double accumulatedPause;
+
+    private float scheduledDuration;
+
+    private struct ScheduledNote
+    {
+        public float position;
+        public AudioClip clip;
+    }
+
+    private readonly List<ScheduledNote> scheduledNotes =
+        new List<ScheduledNote>();
+
+    private readonly Dictionary<Vector2Int, AudioClip> scheduledClips =
+        new Dictionary<Vector2Int, AudioClip>();
+
+    // ==========================================
+    // INICIALIZACION
+    // ==========================================
+
+    private void Awake()
+    {
+        EnsureAudioSource();
+        ConfigureAudioSource();
+    }
 
     private void Start()
     {
-        audioSource =
-            gameObject.AddComponent<AudioSource>();
+        EnsureAudioSource();
+        ConfigureAudioSource();
 
-
-        // Comprobar MusicXMLReader
         if (musicReader == null)
         {
             Debug.LogError(
-                "MusicPlayer no tiene asignado " +
-                "un MusicXMLReader."
+                "MusicPlayer no tiene asignado un MusicXMLReader."
+            );
+        }
+    }
+
+    // ==========================================
+    // CONFIGURACION DE AUDIO
+    // ==========================================
+
+    private void EnsureAudioSource()
+    {
+        if (audioSource == null)
+        {
+            audioSource = GetComponent<AudioSource>();
+        }
+
+        if (audioSource == null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
+
+            Debug.Log(
+                "MusicPlayer: AudioSource creado automáticamente."
+            );
+        }
+    }
+
+    private void ConfigureAudioSource()
+    {
+        if (audioSource == null)
+            return;
+
+        audioSource.playOnAwake = false;
+        audioSource.loop = false;
+        audioSource.volume = volume;
+
+        if (playbackMixerGroup != null)
+        {
+            audioSource.outputAudioMixerGroup =
+                playbackMixerGroup;
+        }
+    }
+
+    // ==========================================
+    // REPRODUCCION ORIGINAL INDEPENDIENTE
+    // ==========================================
+
+    public void PlayPlayback()
+    {
+        StopPlayback();
+
+        if (musicReader == null ||
+            !musicReader.isReady ||
+            musicReader.musicData == null)
+        {
+            Debug.LogWarning(
+                "MusicPlayer: carga una partitura primero."
             );
 
             return;
         }
 
+        EnsureAudioSource();
+        ConfigureAudioSource();
 
-        // Esperar a que MusicData esté lista
-        StartCoroutine(
-            WaitForMusicData()
-        );
+        StartCoroutine(PlayMusic());
     }
-
-
-    // =========================================================
-    // ESPERAR MUSIC DATA
-    // =========================================================
 
     private IEnumerator WaitForMusicData()
     {
-        Debug.Log(
-            "MusicPlayer esperando MusicData..."
-        );
-
-
         while (!musicReader.isReady)
         {
             yield return null;
         }
 
-
-        Debug.Log(
-            "MusicData lista."
-        );
-
-
-        // Comenzar reproducción
-        StartCoroutine(
-            PlayMusic()
-        );
+        StartCoroutine(PlayMusic());
     }
-
-
-    // =========================================================
-    // REPRODUCCIÓN
-    // =========================================================
 
     private IEnumerator PlayMusic()
     {
-        Debug.Log(
-            "===================================="
-        );
+        isPlaying = true;
+        isPaused = false;
+        synchronizedPlayback = false;
 
-        Debug.Log(
-            "INICIANDO REPRODUCCIÓN"
-        );
-
-        Debug.Log(
-            "Instrumento: " +
-            instrument
-        );
-
-        Debug.Log(
-            "===================================="
-        );
-
-
-        // Recorrer todos los compases
         foreach (
             MeasureData measure
             in musicReader.musicData.measures
         )
         {
-            Debug.Log(
-                "Compás " +
-                measure.number
-            );
-
-
-            // Recorrer eventos del compás
-            foreach (
-                NoteData note
-                in measure.notes
-            )
+            foreach (NoteData note in measure.notes)
             {
                 float duration =
-                    GetDurationInSeconds(
-                        note
-                    );
+                    GetDurationInSeconds(note);
 
-
-                // =================================================
-                // SILENCIO
-                // =================================================
+                if (duration <= 0f)
+                    continue;
 
                 if (note.isRest)
                 {
-                    Debug.Log(
-                        "Silencio | " +
-                        duration +
-                        " segundos"
-                    );
-
-
-                    yield return new WaitForSeconds(
-                        duration
-                    );
-
-
+                    yield return WaitWithPause(duration);
                     continue;
                 }
 
+                PlayNote(note, duration);
 
-                // =================================================
-                // NOTA
-                // =================================================
-
-                Debug.Log(
-                    "Nota: " +
-                    note.step +
-                    note.octave +
-                    " | Duración: " +
-                    duration
-                );
-
-
-                // Reproducir usando el sintetizador
-                // seleccionado
-                PlayNote(
-                    note,
-                    duration
-                );
-
-
-                yield return new WaitForSeconds(
-                    duration
-                );
+                yield return WaitWithPause(duration);
             }
         }
 
-
-        Debug.Log(
-            "===================================="
-        );
-
-        Debug.Log(
-            "REPRODUCCIÓN TERMINADA"
-        );
-
-        Debug.Log(
-            "===================================="
-        );
+        isPlaying = false;
     }
 
+    private IEnumerator WaitWithPause(float duration)
+    {
+        float remaining = duration;
 
-    // =========================================================
-    // REPRODUCIR NOTA
-    // =========================================================
+        while (remaining > 0f)
+        {
+            if (!isPaused)
+            {
+                remaining -= Time.deltaTime;
+            }
+
+            yield return null;
+        }
+    }
+
+    // ==========================================
+    // SINTESIS DE NOTAS ORIGINALES
+    // ==========================================
 
     private void PlayNote(
         NoteData note,
         float duration
     )
     {
-        float frequency =
-            GetFrequency(
-                note.step,
-                note.octave,
-                note.alter
-            );
-
+        float frequency = GetFrequency(
+            note.step,
+            note.octave,
+            note.alter
+        );
 
         AudioClip clip = null;
-
-
-        // =====================================================
-        // ELEGIR INSTRUMENTO
-        // =====================================================
 
         switch (instrument)
         {
@@ -246,116 +226,419 @@ public class MusicPlayer : MonoBehaviour
                 if (guitarSynthesizer == null)
                 {
                     Debug.LogError(
-                        "No se ha asignado " +
-                        "GuitarSynthesizer."
+                        "No se ha asignado GuitarSynthesizer."
                     );
 
                     return;
                 }
 
-
-                clip =
-                    guitarSynthesizer.GenerateNote(
-                        frequency,
-                        duration
-                    );
+                clip = guitarSynthesizer.GenerateNote(
+                    frequency,
+                    duration
+                );
 
                 break;
-
 
             case InstrumentType.Bass:
 
                 if (bassSynthesizer == null)
                 {
                     Debug.LogError(
-                        "No se ha asignado " +
-                        "BassSynthesizer."
+                        "No se ha asignado BassSynthesizer."
                     );
 
                     return;
                 }
 
-
-                clip =
-                    bassSynthesizer.GenerateNote(
-                        frequency,
-                        duration
-                    );
+                clip = bassSynthesizer.GenerateNote(
+                    frequency,
+                    duration
+                );
 
                 break;
         }
 
-
         if (clip == null)
-        {
             return;
+
+        if (audioSource == null)
+        {
+            EnsureAudioSource();
+            ConfigureAudioSource();
         }
 
-
-        // =====================================================
-        // REPRODUCCIÓN
-        // =====================================================
-
-        audioSource.clip =
-            clip;
-
-        audioSource.volume =
-            volume;
+        audioSource.clip = clip;
+        audioSource.volume = volume;
 
         audioSource.Play();
     }
 
+    // ==========================================
+    // PREPARAR REPRODUCCION SINCRONIZADA
+    // ==========================================
 
-    // =========================================================
-    // DURACIÓN MUSICXML → SEGUNDOS
-    // =========================================================
+    public bool PrepareSynchronizedPlayback()
+    {
+        StopPlayback();
 
-    private float GetDurationInSeconds(
-        NoteData note
+        if (musicReader == null ||
+            !musicReader.isReady ||
+            musicReader.musicData == null)
+        {
+            Debug.LogWarning(
+                "No hay una partitura cargada."
+            );
+
+            return false;
+        }
+
+        if (instrument == InstrumentType.Guitar &&
+            guitarSynthesizer == null)
+        {
+            Debug.LogError(
+                "GuitarSynthesizer no asignado."
+            );
+
+            return false;
+        }
+
+        if (instrument == InstrumentType.Bass &&
+            bassSynthesizer == null)
+        {
+            Debug.LogError(
+                "BassSynthesizer no asignado."
+            );
+
+            return false;
+        }
+
+        EnsureAudioSource();
+        ConfigureAudioSource();
+
+        try
+        {
+            var analysis = MusicalAnalyzer.Analyze(
+                musicReader.musicData
+            );
+
+            scheduledDuration =
+                analysis.totalDuration;
+
+            foreach (var measure in analysis.measures)
+            {
+                foreach (var note in measure.notes)
+                {
+                    if (note.isRest ||
+                        note.duration <= 0f)
+                    {
+                        continue;
+                    }
+
+                    int durationMs = Mathf.Max(
+                        1,
+                        Mathf.RoundToInt(
+                            note.duration * 1000f
+                        )
+                    );
+
+                    Vector2Int key = new Vector2Int(
+                        note.midi,
+                        durationMs
+                    );
+
+                    if (!scheduledClips.TryGetValue(
+                        key,
+                        out AudioClip clip
+                    ))
+                    {
+                        float frequency =
+                            MusicalAnalyzer.MidiToFrequency(
+                                note.midi
+                            );
+
+                        float duration =
+                            durationMs / 1000f;
+
+                        switch (instrument)
+                        {
+                            case InstrumentType.Guitar:
+
+                                clip =
+                                    guitarSynthesizer.GenerateNote(
+                                        frequency,
+                                        duration
+                                    );
+
+                                break;
+
+                            case InstrumentType.Bass:
+
+                                clip =
+                                    bassSynthesizer.GenerateNote(
+                                        frequency,
+                                        duration
+                                    );
+
+                                break;
+                        }
+
+                        if (clip == null)
+                        {
+                            throw new System.Exception(
+                                "No se pudo sintetizar una nota."
+                            );
+                        }
+
+                        scheduledClips.Add(key, clip);
+                    }
+
+                    scheduledNotes.Add(
+                        new ScheduledNote
+                        {
+                            position =
+                                measure.startTime +
+                                note.start,
+
+                            clip = clip
+                        }
+                    );
+                }
+            }
+
+            scheduledNotes.Sort(
+                (a, b) =>
+                    a.position.CompareTo(b.position)
+            );
+
+            Debug.Log(
+                "MusicPlayer preparado | Instrumento: " +
+                instrument +
+                " | Notas: " +
+                scheduledNotes.Count +
+                " | Clips únicos: " +
+                scheduledClips.Count +
+                " | Duración: " +
+                scheduledDuration.ToString("F2") +
+                " segundos"
+            );
+
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            ClearScheduledNotes();
+
+            Debug.LogError(
+                "Error preparando reproducción: " +
+                e.Message
+            );
+
+            return false;
+        }
+    }
+
+    // ==========================================
+    // INICIAR REPRODUCCION SINCRONIZADA
+    // ==========================================
+
+    public void PlaySynchronized(double startTime)
+    {
+        EnsureAudioSource();
+        ConfigureAudioSource();
+
+        StopAllCoroutines();
+
+        audioSource.Stop();
+        audioSource.clip = null;
+
+        synchronizedPlayback = true;
+
+        isPlaying = true;
+        isPaused = false;
+
+        accumulatedPause = 0;
+        pauseStartedAt = 0;
+
+        StartCoroutine(
+            PlaySynchronizedMusic(startTime)
+        );
+    }
+
+    private IEnumerator PlaySynchronizedMusic(
+        double startTime
     )
+    {
+        double endTime =
+            startTime + scheduledDuration;
+
+        foreach (ScheduledNote note in scheduledNotes)
+        {
+            while (
+                isPaused ||
+                AudioSettings.dspTime <
+                startTime +
+                note.position +
+                accumulatedPause
+            )
+            {
+                yield return null;
+            }
+
+            audioSource.PlayOneShot(note.clip);
+
+            endTime = System.Math.Max(
+                endTime,
+                startTime +
+                note.position +
+                note.clip.length
+            );
+        }
+
+        // Esperar hasta finalizar la partitura
+        // y las colas de los sonidos.
+
+        while (
+            isPaused ||
+            AudioSettings.dspTime <
+            endTime + accumulatedPause
+        )
+        {
+            yield return null;
+        }
+
+        isPlaying = false;
+        synchronizedPlayback = false;
+
+        Debug.Log(
+            "MusicPlayer: reproducción sincronizada finalizada."
+        );
+    }
+
+    // ==========================================
+    // PAUSAR REPRODUCCION
+    // ==========================================
+
+    public void PausePlayback()
+    {
+        if (!isPlaying || isPaused)
+            return;
+
+        isPaused = true;
+
+        if (synchronizedPlayback)
+        {
+            pauseStartedAt =
+                AudioSettings.dspTime;
+        }
+
+        if (audioSource != null)
+        {
+            audioSource.Pause();
+        }
+    }
+
+    // ==========================================
+    // REANUDAR REPRODUCCION
+    // ==========================================
+
+    public void ResumePlayback()
+    {
+        if (!isPlaying || !isPaused)
+            return;
+
+        if (synchronizedPlayback)
+        {
+            accumulatedPause +=
+                AudioSettings.dspTime -
+                pauseStartedAt;
+        }
+
+        isPaused = false;
+
+        if (audioSource != null)
+        {
+            audioSource.UnPause();
+        }
+    }
+
+    // ==========================================
+    // DETENER REPRODUCCION
+    // ==========================================
+
+    public void StopPlayback()
+    {
+        isPaused = false;
+        isPlaying = false;
+
+        synchronizedPlayback = false;
+
+        accumulatedPause = 0;
+        pauseStartedAt = 0;
+
+        StopAllCoroutines();
+
+        if (audioSource != null)
+        {
+            audioSource.Stop();
+            audioSource.clip = null;
+        }
+
+        ClearScheduledNotes();
+    }
+
+    // ==========================================
+    // LIMPIEZA DE CLIPS SINCRONIZADOS
+    // ==========================================
+
+    private void ClearScheduledNotes()
+    {
+        scheduledNotes.Clear();
+
+        foreach (AudioClip clip in scheduledClips.Values)
+        {
+            if (clip != null)
+            {
+                Destroy(clip);
+            }
+        }
+
+        scheduledClips.Clear();
+
+        scheduledDuration = 0f;
+    }
+
+    // ==========================================
+    // CONVERSION DE DURACION
+    // ==========================================
+
+    private float GetDurationInSeconds(NoteData note)
     {
         float tempo =
             musicReader.musicData.tempo;
 
-
-        // Si el XML no tiene tempo
-        // utilizamos 120 BPM temporalmente
         if (tempo <= 0f)
         {
             tempo = 120f;
         }
 
-
         int divisions =
             musicReader.musicData.divisions;
-
 
         if (divisions <= 0)
         {
             divisions = 1;
         }
 
-
-        // Duración de una negra
-        float quarterNoteDuration =
-            60f / tempo;
-
-
-        // Duración en negras
-        float quarterNotes =
+        return
             (float)note.duration /
-            divisions;
-
-
-        // Duración en segundos
-        return quarterNotes *
-               quarterNoteDuration;
+            divisions *
+            60f /
+            tempo;
     }
 
-
-    // =========================================================
-    // NOTA → FRECUENCIA
-    // =========================================================
+    // ==========================================
+    // CONVERSION DE NOTA A FRECUENCIA
+    // ==========================================
 
     private float GetFrequency(
         string noteName,
@@ -364,7 +647,6 @@ public class MusicPlayer : MonoBehaviour
     )
     {
         int semitone;
-
 
         switch (noteName)
         {
@@ -401,21 +683,62 @@ public class MusicPlayer : MonoBehaviour
                 break;
         }
 
+        return 440f * Mathf.Pow(
+            2f,
+            (
+                semitone +
+                (octave - 4) * 12 +
+                alter
+            ) / 12f
+        );
+    }
 
-        int octaveDifference =
-            octave - 4;
+    // ==========================================
+    // LIMPIEZA FINAL
+    // ==========================================
+
+    private void OnDestroy()
+    {
+        StopPlayback();
+    }
+    // ==========================================
+    // EVENTOS PARA EXPORTACION WAV
+    // ==========================================
+
+    public List<AudioRenderEvent> GetRenderEvents()
+    {
+        List<AudioRenderEvent> result =
+            new List<AudioRenderEvent>();
 
 
-        int totalSemitones =
-            semitone +
-            octaveDifference * 12 +
-            alter;
+        foreach (var note in scheduledNotes)
+        {
+            if (note.clip == null)
+            {
+                continue;
+            }
 
 
-        return 440f *
-               Mathf.Pow(
-                   2f,
-                   totalSemitones / 12f
-               );
+            result.Add(
+                new AudioRenderEvent(
+                    note.clip,
+                    note.position,
+                    volume
+                )
+            );
+        }
+
+
+        return result;
+    }
+
+
+    // ==========================================
+    // DURACION PARA EXPORTACION
+    // ==========================================
+
+    public float GetRenderDuration()
+    {
+        return scheduledDuration;
     }
 }
