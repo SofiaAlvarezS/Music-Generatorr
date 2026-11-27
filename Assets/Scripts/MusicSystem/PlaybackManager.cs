@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.Audio;
-
+using System.Collections.Generic;
 public class PlaybackManager : MonoBehaviour
 {
     public enum PlaybackType
@@ -10,36 +10,130 @@ public class PlaybackManager : MonoBehaviour
         Drums
     }
 
-    [Header("Reproductores")]
+
+    [Header("Referencias")]
     public MusicPlayer musicPlayer;
+
     public DrumPlayer drumPlayer;
 
-    [Header("Instrumento")]
-    public PlaybackType playbackType = PlaybackType.Guitar;
 
-    [Header("Reproducción")]
+    [Header("Configuracion")]
+    public PlaybackType playbackType;
+
     public bool playOnStart = false;
+
 
     [Header("Audio Mixer")]
     public AudioMixerGroup playbackMixerGroup;
 
-    [Header("AudioSource del Manager (Control Principal)")]
     public AudioSource playbackAudioSource;
 
+
+    [Header("Control de audio")]
     [Range(0f, 1f)]
     public float volume = 1f;
 
     public bool mute = false;
 
+
+    [Header("Depuracion")]
+    public bool printDebug = true;
+
+
+    private bool isPrepared = false;
+
+
+    // ==========================================
+    // ESTADO DE REPRODUCCION
+    // ==========================================
+
+    public bool IsPlaying
+    {
+        get
+        {
+            switch (playbackType)
+            {
+                case PlaybackType.Guitar:
+                case PlaybackType.Bass:
+
+                    return musicPlayer != null &&
+                           musicPlayer.IsPlaying;
+
+                case PlaybackType.Drums:
+
+                    return drumPlayer != null &&
+                           drumPlayer.IsPlaying;
+
+                default:
+
+                    return false;
+            }
+        }
+    }
+
+
+    public bool IsPaused
+    {
+        get
+        {
+            switch (playbackType)
+            {
+                case PlaybackType.Guitar:
+                case PlaybackType.Bass:
+
+                    return musicPlayer != null &&
+                           musicPlayer.IsPaused;
+
+                case PlaybackType.Drums:
+
+                    return drumPlayer != null &&
+                           drumPlayer.IsPaused;
+
+                default:
+
+                    return false;
+            }
+        }
+    }
+
+
+    // ==========================================
+    // INICIALIZACION
+    // ==========================================
+
     private void Awake()
     {
         EnsureAudioSource();
-        ConfigureManagerAudioSource();
-        ConfigurePlayerAudioSources();
 
-        if (musicPlayer != null) musicPlayer.enabled = false;
-        if (drumPlayer != null) drumPlayer.enabled = false;
+        ConfigureAudioSource();
+
+
+        if (musicPlayer != null)
+        {
+            if (playbackMixerGroup != null)
+            {
+                musicPlayer.playbackMixerGroup =
+                    playbackMixerGroup;
+            }
+
+            musicPlayer.enabled = false;
+        }
+
+
+        if (drumPlayer != null)
+        {
+            if (playbackMixerGroup != null)
+            {
+                drumPlayer.playbackMixerGroup =
+                    playbackMixerGroup;
+            }
+
+            drumPlayer.playOnStart = false;
+
+            drumPlayer.enabled = false;
+        }
     }
+
 
     private void Start()
     {
@@ -49,151 +143,586 @@ public class PlaybackManager : MonoBehaviour
         }
     }
 
+
+    // ==========================================
+    // CONFIGURACION DE AUDIO
+    // ==========================================
+
     private void EnsureAudioSource()
     {
         if (playbackAudioSource == null)
         {
-            playbackAudioSource = GetComponent<AudioSource>();
+            playbackAudioSource =
+                GetComponent<AudioSource>();
         }
+
 
         if (playbackAudioSource == null)
         {
-            playbackAudioSource = gameObject.AddComponent<AudioSource>();
+            playbackAudioSource =
+                gameObject.AddComponent<AudioSource>();
         }
     }
 
-    private void ConfigureManagerAudioSource()
+
+    private void ConfigureAudioSource()
     {
-        if (playbackAudioSource == null) return;
+        if (playbackAudioSource == null)
+        {
+            return;
+        }
+
 
         playbackAudioSource.playOnAwake = false;
+
         playbackAudioSource.loop = false;
+
         playbackAudioSource.volume = volume;
+
         playbackAudioSource.mute = mute;
 
-        AssignMixerGroup(playbackAudioSource);
-    }
-
-    private void ConfigurePlayerAudioSources()
-    {
-        if (musicPlayer != null)
-        {
-            AudioSource[] sources = musicPlayer.GetComponentsInChildren<AudioSource>(true);
-            foreach (AudioSource source in sources)
-            {
-                AssignMixerGroup(source);
-            }
-        }
-
-        if (drumPlayer != null)
-        {
-            AudioSource[] sources = drumPlayer.GetComponentsInChildren<AudioSource>(true);
-            foreach (AudioSource source in sources)
-            {
-                AssignMixerGroup(source);
-            }
-        }
-    }
-
-    private void AssignMixerGroup(AudioSource source)
-    {
-        if (source == null) return;
 
         if (playbackMixerGroup != null)
         {
-            source.outputAudioMixerGroup = playbackMixerGroup;
+            playbackAudioSource.outputAudioMixerGroup =
+                playbackMixerGroup;
         }
     }
 
-    public void SetPlaybackType(PlaybackType type)
+
+    // ==========================================
+    // SELECCION DE INSTRUMENTO
+    // ==========================================
+
+    public void SetPlaybackType(
+        PlaybackType type)
     {
+        StopAllPlayback();
+
         playbackType = type;
-        Debug.Log("PlaybackManager → Instrumento seleccionado: " + playbackType);
     }
 
-    public void SetGuitar() { SetPlaybackType(PlaybackType.Guitar); }
-    public void SetBass() { SetPlaybackType(PlaybackType.Bass); }
-    public void SetDrums() { SetPlaybackType(PlaybackType.Drums); }
+
+    public void SetGuitar()
+    {
+        SetPlaybackType(
+            PlaybackType.Guitar
+        );
+    }
+
+
+    public void SetBass()
+    {
+        SetPlaybackType(
+            PlaybackType.Bass
+        );
+    }
+
+
+    public void SetDrums()
+    {
+        SetPlaybackType(
+            PlaybackType.Drums
+        );
+    }
+
+
+    // ==========================================
+    // REPRODUCCION INDIVIDUAL
+    // ==========================================
 
     public void Play()
     {
         StopAllPlayback();
 
+
         switch (playbackType)
         {
             case PlaybackType.Guitar:
-                if (musicPlayer == null) { Debug.LogError("MusicPlayer no asignado."); return; }
-                musicPlayer.instrument = MusicPlayer.InstrumentType.Guitar;
+
+                if (musicPlayer == null)
+                {
+                    Debug.LogError(
+                        "MusicPlayer no asignado."
+                    );
+
+                    return;
+                }
+
+
+                musicPlayer.instrument =
+                    MusicPlayer.InstrumentType.Guitar;
+
                 musicPlayer.enabled = true;
+
+                musicPlayer.PlayPlayback();
+
                 break;
+
 
             case PlaybackType.Bass:
-                if (musicPlayer == null) { Debug.LogError("MusicPlayer no asignado."); return; }
-                musicPlayer.instrument = MusicPlayer.InstrumentType.Bass;
+
+                if (musicPlayer == null)
+                {
+                    Debug.LogError(
+                        "MusicPlayer no asignado."
+                    );
+
+                    return;
+                }
+
+
+                musicPlayer.instrument =
+                    MusicPlayer.InstrumentType.Bass;
+
                 musicPlayer.enabled = true;
+
+                musicPlayer.PlayPlayback();
+
                 break;
 
+
             case PlaybackType.Drums:
-                if (drumPlayer == null) { Debug.LogError("DrumPlayer no asignado."); return; }
+
+                if (drumPlayer == null)
+                {
+                    Debug.LogError(
+                        "DrumPlayer no asignado."
+                    );
+
+                    return;
+                }
+
+
+                drumPlayer.playOnStart = false;
+
                 drumPlayer.enabled = true;
+
+                drumPlayer.Play();
+
                 break;
         }
     }
+
+
+    // ==========================================
+    // PREPARAR REPRODUCCION SINCRONIZADA
+    // ==========================================
+
+    public bool PrepareSynchronizedPlayback()
+    {
+        StopAllPlayback();
+
+
+        bool prepared = false;
+
+
+        switch (playbackType)
+        {
+            case PlaybackType.Guitar:
+
+                if (musicPlayer == null)
+                {
+                    Debug.LogError(
+                        "MusicPlayer no asignado."
+                    );
+
+                    return false;
+                }
+
+
+                musicPlayer.instrument =
+                    MusicPlayer.InstrumentType.Guitar;
+
+                musicPlayer.enabled = true;
+
+
+                prepared =
+                    musicPlayer.PrepareSynchronizedPlayback();
+
+                break;
+
+
+            case PlaybackType.Bass:
+
+                if (musicPlayer == null)
+                {
+                    Debug.LogError(
+                        "MusicPlayer no asignado."
+                    );
+
+                    return false;
+                }
+
+
+                musicPlayer.instrument =
+                    MusicPlayer.InstrumentType.Bass;
+
+                musicPlayer.enabled = true;
+
+
+                prepared =
+                    musicPlayer.PrepareSynchronizedPlayback();
+
+                break;
+
+
+            // NUEVO: BATERIA SINCRONIZADA
+
+            case PlaybackType.Drums:
+
+                if (drumPlayer == null)
+                {
+                    Debug.LogError(
+                        "DrumPlayer no asignado."
+                    );
+
+                    return false;
+                }
+
+
+                drumPlayer.playOnStart = false;
+
+                drumPlayer.enabled = true;
+
+
+                prepared =
+                    drumPlayer.PrepareSynchronizedPlayback();
+
+                break;
+        }
+
+
+        if (!prepared)
+        {
+            StopAllPlayback();
+
+            Debug.LogError(
+                "No se pudo preparar: " +
+                playbackType
+            );
+
+            return false;
+        }
+
+
+        isPrepared = true;
+
+
+        if (printDebug)
+        {
+            Debug.Log(
+                "PlaybackManager preparado: " +
+                playbackType
+            );
+        }
+
+
+        return true;
+    }
+
+
+    // ==========================================
+    // REPRODUCCION SINCRONIZADA
+    // ==========================================
+
+    public void PlaySynchronized(
+        double startTime)
+    {
+        if (!isPrepared)
+        {
+            Debug.LogError(
+                "PlaybackManager: " +
+                "el instrumento no está preparado."
+            );
+
+            return;
+        }
+
+
+        if (double.IsNaN(startTime) ||
+            double.IsInfinity(startTime))
+        {
+            Debug.LogError(
+                "Tiempo DSP invalido."
+            );
+
+            return;
+        }
+
+
+        switch (playbackType)
+        {
+            case PlaybackType.Guitar:
+            case PlaybackType.Bass:
+
+                if (musicPlayer == null ||
+                    !musicPlayer.enabled)
+                {
+                    Debug.LogError(
+                        "MusicPlayer no preparado."
+                    );
+
+                    return;
+                }
+
+
+                musicPlayer.PlaySynchronized(
+                    startTime
+                );
+
+                break;
+
+
+            // NUEVO: BATERIA SINCRONIZADA
+
+            case PlaybackType.Drums:
+
+                if (drumPlayer == null ||
+                    !drumPlayer.enabled)
+                {
+                    Debug.LogError(
+                        "DrumPlayer no preparado."
+                    );
+
+                    return;
+                }
+
+
+                drumPlayer.PlaySynchronized(
+                    startTime
+                );
+
+                break;
+        }
+
+
+        if (printDebug)
+        {
+            Debug.Log(
+                "PlaybackManager | " +
+                playbackType +
+                " | Inicio DSP: " +
+                startTime.ToString("F4")
+            );
+        }
+    }
+
+
+    // ==========================================
+    // PAUSAR
+    // ==========================================
 
     public void Pausar()
     {
-        if ((playbackType == PlaybackType.Guitar || playbackType == PlaybackType.Bass) && musicPlayer != null)
+        switch (playbackType)
         {
-            musicPlayer.PausePlayback();
-        }
-        else if (playbackType == PlaybackType.Drums && drumPlayer != null)
-        {
-            drumPlayer.PausePlayback();
+            case PlaybackType.Guitar:
+            case PlaybackType.Bass:
+
+                if (musicPlayer != null)
+                {
+                    musicPlayer.PausePlayback();
+                }
+
+                break;
+
+
+            case PlaybackType.Drums:
+
+                if (drumPlayer != null)
+                {
+                    drumPlayer.PausePlayback();
+                }
+
+                break;
         }
     }
+
+
+    // ==========================================
+    // REANUDAR
+    // ==========================================
+
+    public void Reanudar()
+    {
+        switch (playbackType)
+        {
+            case PlaybackType.Guitar:
+            case PlaybackType.Bass:
+
+                if (musicPlayer != null)
+                {
+                    musicPlayer.ResumePlayback();
+                }
+
+                break;
+
+
+            case PlaybackType.Drums:
+
+                if (drumPlayer != null)
+                {
+                    drumPlayer.ResumePlayback();
+                }
+
+                break;
+        }
+    }
+
+
+    // ==========================================
+    // DETENER
+    // ==========================================
 
     public void Stop()
     {
         StopAllPlayback();
     }
 
+
     private void StopAllPlayback()
     {
-        if (musicPlayer != null) { musicPlayer.StopPlayback(); musicPlayer.enabled = false; }
-        if (drumPlayer != null) { drumPlayer.StopPlayback(); drumPlayer.enabled = false; }
-        if (playbackAudioSource != null) { playbackAudioSource.Stop(); }
+        isPrepared = false;
+
+
+        if (musicPlayer != null)
+        {
+            musicPlayer.StopPlayback();
+
+            musicPlayer.enabled = false;
+        }
+
+
+        if (drumPlayer != null)
+        {
+            drumPlayer.StopPlayback();
+
+            drumPlayer.enabled = false;
+        }
+
+
+        if (playbackAudioSource != null)
+        {
+            playbackAudioSource.Stop();
+        }
     }
 
-    // Método conectado al Slider (en modo Dynamic float)
+
+    // ==========================================
+    // CONTROL DE VOLUMEN
+    // ==========================================
+
     public void SetVolume(float newVolume)
     {
         volume = Mathf.Clamp01(newVolume);
 
-        // Curva exponencial suave para que el volumen baje de forma natural y progresiva
-        float smoothVolume = volume * volume;
 
         if (playbackAudioSource != null)
         {
-            playbackAudioSource.volume = smoothVolume;
+            playbackAudioSource.volume =
+                volume;
         }
     }
 
-    public void SetMute(bool shouldMute)
+
+    public void SetMute(bool newMute)
     {
-        mute = shouldMute;
+        mute = newMute;
+
+
         if (playbackAudioSource != null)
         {
-            playbackAudioSource.mute = mute;
+            playbackAudioSource.mute =
+                mute;
         }
     }
 
-    private void OnValidate()
+
+    // ==========================================
+    // CICLO DE VIDA
+    // ==========================================
+
+    private void OnDisable()
     {
-        volume = Mathf.Clamp01(volume);
-        if (Application.isPlaying)
+        StopAllPlayback();
+    }
+    // ==========================================
+    // OBTENER EVENTOS DEL INSTRUMENTO ORIGINAL
+    // ==========================================
+
+    public List<AudioRenderEvent> GetRenderEvents()
+    {
+        if (!isPrepared)
         {
-            SetVolume(volume);
-            SetMute(mute);
+            return new List<AudioRenderEvent>();
         }
+
+
+        switch (playbackType)
+        {
+            case PlaybackType.Guitar:
+            case PlaybackType.Bass:
+
+                if (musicPlayer != null)
+                {
+                    return musicPlayer.GetRenderEvents();
+                }
+
+                break;
+
+
+            case PlaybackType.Drums:
+
+                if (drumPlayer != null)
+                {
+                    return drumPlayer.GetRenderEvents();
+                }
+
+                break;
+        }
+
+
+        return new List<AudioRenderEvent>();
+    }
+
+
+    // ==========================================
+    // OBTENER DURACION DEL ORIGINAL
+    // ==========================================
+
+    public float GetRenderDuration()
+    {
+        if (!isPrepared)
+        {
+            return 0f;
+        }
+
+
+        switch (playbackType)
+        {
+            case PlaybackType.Guitar:
+            case PlaybackType.Bass:
+
+                if (musicPlayer != null)
+                {
+                    return musicPlayer.GetRenderDuration();
+                }
+
+                break;
+
+
+            case PlaybackType.Drums:
+
+                if (drumPlayer != null)
+                {
+                    return drumPlayer.GetRenderDuration();
+                }
+
+                break;
+        }
+
+
+        return 0f;
     }
 }

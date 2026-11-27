@@ -31,13 +31,59 @@ public class DrumPlayer : MonoBehaviour
     public AudioMixerGroup playbackMixerGroup;
 
 
+    [Header("Sincronización")]
+    [Min(0.05f)]
+    public float startDelay = 0.15f;
+
+    public bool printDebug = true;
+
+
     private DrumPattern pattern;
 
     private bool isPaused = false;
     private bool isPlaying = false;
 
+    public bool IsPlaying => isPlaying;
+    public bool IsPaused => isPaused;
+
+
+    private bool isPrepared = false;
+
+    private double pauseStartedAt;
+    private double accumulatedPause;
+
+    private float preparedDuration;
+
+
     private List<AudioSource> activeSources =
         new List<AudioSource>();
+
+
+    // ==========================================
+    // EVENTOS PREPARADOS
+    // ==========================================
+
+    private struct ScheduledDrumNote
+    {
+        public int midiNote;
+
+        public float position;
+
+        public AudioClip clip;
+    }
+
+
+    private readonly List<ScheduledDrumNote> scheduledNotes =
+        new List<ScheduledDrumNote>();
+
+
+    private readonly List<AudioClip> generatedClips =
+        new List<AudioClip>();
+
+
+    // ==========================================
+    // INICIALIZACION
+    // ==========================================
 
     private void Start()
     {
@@ -63,17 +109,6 @@ public class DrumPlayer : MonoBehaviour
         }
 
 
-        pattern =
-            patternGenerator.GenerateBasicPattern();
-
-
-        Debug.Log(
-            "Patrón de batería generado. " +
-            "Eventos: " +
-            pattern.notes.Count
-        );
-
-
         if (playOnStart)
         {
             if (musicReader != null)
@@ -84,167 +119,475 @@ public class DrumPlayer : MonoBehaviour
             }
             else
             {
-                StartCoroutine(
-                    PlayPattern()
-                );
+                Play();
             }
         }
     }
 
+
+    // ==========================================
+    // ESPERAR CARGA DE LA PARTITURA
+    // ==========================================
+
     private IEnumerator WaitForMusicData()
     {
-        Debug.Log(
-            "DrumPlayer esperando MusicData..."
-        );
+        if (printDebug)
+        {
+            Debug.Log(
+                "DrumPlayer esperando MusicData..."
+            );
+        }
 
 
-        while (!musicReader.isReady)
+        while (musicReader != null &&
+               !musicReader.isReady)
         {
             yield return null;
         }
 
 
-        Debug.Log(
-            "MusicData lista."
-        );
+        if (musicReader == null)
+        {
+            yield break;
+        }
 
 
-        if (useMusicXMLTempo)
+        if (printDebug)
+        {
+            Debug.Log(
+                "MusicData lista."
+            );
+        }
+
+
+        Play();
+    }
+
+
+    // ==========================================
+    // CONFIGURACION DEL TEMPO
+    // ==========================================
+
+    private void UpdateTempo()
+    {
+        if (useMusicXMLTempo &&
+            musicReader != null &&
+            musicReader.isReady &&
+            musicReader.musicData != null)
         {
             bpm =
                 musicReader.musicData.tempo;
         }
 
 
-        if (bpm <= 0f)
+        if (float.IsNaN(bpm) ||
+            float.IsInfinity(bpm) ||
+            bpm <= 0f)
         {
             bpm = 120f;
         }
 
 
-        Debug.Log(
-            "Tempo utilizado por batería: " +
-            bpm +
-            " BPM"
-        );
+        if (printDebug)
+        {
+            Debug.Log(
+                "Tempo utilizado por batería: " +
+                bpm +
+                " BPM"
+            );
+        }
+    }
+
+
+    // ==========================================
+    // NUEVO: PREPARAR REPRODUCCION
+    // ==========================================
+
+    public bool PrepareSynchronizedPlayback()
+    {
+        StopPlayback();
+
+
+        try
+        {
+            if (patternGenerator == null)
+            {
+                throw new System.Exception(
+                    "Falta asignar DrumPatternGenerator."
+                );
+            }
+
+
+            if (drumSynthesizer == null)
+            {
+                throw new System.Exception(
+                    "Falta asignar DrumSynthesizer."
+                );
+            }
+
+
+            UpdateTempo();
+
+
+            // Generar el patrón de batería.
+
+            if (musicReader != null &&
+                musicReader.isReady &&
+                musicReader.musicData != null)
+            {
+                pattern =
+                    patternGenerator.GeneratePatternFromMusic(
+                        musicReader.musicData
+                    );
+            }
+            else
+            {
+                pattern =
+                    patternGenerator.GenerateBasicPattern();
+            }
+
+            if (pattern == null ||
+                pattern.notes == null ||
+                pattern.notes.Count == 0)
+            {
+                throw new System.Exception(
+                    "El patrón de batería está vacío."
+                );
+            }
+
+
+            float secondsPerBeat =
+                60f / bpm;
+
+
+            preparedDuration = 0f;
+
+            if (musicReader != null &&
+                musicReader.isReady &&
+                musicReader.musicData != null)
+            {
+                MusicData data =
+                    musicReader.musicData;
+
+                int beats =
+                    data.beats > 0 ? data.beats : 4;
+
+                int beatType =
+                    data.beatType > 0 ? data.beatType : 4;
+
+                preparedDuration =
+                    data.measures.Count *
+                    beats *
+                    (4f / beatType) *
+                    secondsPerBeat;
+            }
+            else
+            {
+                preparedDuration =
+                    16f * secondsPerBeat;
+            }
+
+
+            // Ordenar cronológicamente.
+
+            pattern.notes.Sort(
+                (a, b) =>
+                    a.position.CompareTo(
+                        b.position
+                    )
+            );
+
+
+            // Sintetizar todos los golpes antes
+            // de comenzar la reproducción.
+
+            foreach (
+                DrumNoteData note
+                in pattern.notes
+            )
+            {
+                if (float.IsNaN(note.position) ||
+                    float.IsInfinity(note.position) ||
+                    note.position < 0f ||
+                    note.duration <= 0f)
+                {
+                    continue;
+                }
+
+
+                AudioClip clip =
+                    drumSynthesizer.GenerateDrum(
+                        note.midiNote,
+                        note.duration,
+                        note.velocity
+                    );
+
+
+                if (clip == null)
+                {
+                    throw new System.Exception(
+                        "No se pudo sintetizar el golpe: " +
+                        note.midiNote
+                    );
+                }
+
+
+                generatedClips.Add(clip);
+
+
+                // Convertir posición musical
+                // a segundos absolutos.
+
+                float position =
+                    note.position * secondsPerBeat;
+
+
+                scheduledNotes.Add(
+                    new ScheduledDrumNote
+                    {
+                        midiNote = note.midiNote,
+
+                        position = position,
+
+                        clip = clip
+                    }
+                );
+
+
+                // Considerar la duración
+                // completa del sonido.
+
+                preparedDuration = Mathf.Max(
+                    preparedDuration,
+                    position + clip.length
+                );
+            }
+
+
+            if (scheduledNotes.Count == 0)
+            {
+                throw new System.Exception(
+                    "No existen golpes válidos."
+                );
+            }
+
+
+            scheduledNotes.Sort(
+                (a, b) =>
+                    a.position.CompareTo(
+                        b.position
+                    )
+            );
+
+
+            isPrepared = true;
+
+
+            if (printDebug)
+            {
+                Debug.Log(
+                    "================================"
+                );
+
+                Debug.Log(
+                    "BATERÍA PREPARADA"
+                );
+
+                Debug.Log(
+                    "BPM: " + bpm
+                );
+
+                Debug.Log(
+                    "Eventos: " +
+                    scheduledNotes.Count
+                );
+
+                Debug.Log(
+                    "Duración: " +
+                    preparedDuration.ToString("F2") +
+                    " segundos"
+                );
+
+                Debug.Log(
+                    "================================"
+                );
+            }
+
+
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            StopPlayback();
+
+            Debug.LogError(
+                "DrumPlayer: " +
+                e.Message,
+                this
+            );
+
+            return false;
+        }
+    }
+
+
+    // ==========================================
+    // NUEVO: REPRODUCCION SINCRONIZADA
+    // ==========================================
+
+    public void PlaySynchronized(double startTime)
+    {
+        if (!isPrepared ||
+            scheduledNotes.Count == 0)
+        {
+            Debug.LogError(
+                "DrumPlayer: prepara primero " +
+                "la reproducción."
+            );
+
+            return;
+        }
+
+
+        if (double.IsNaN(startTime) ||
+            double.IsInfinity(startTime))
+        {
+            Debug.LogError(
+                "DrumPlayer: tiempo DSP inválido."
+            );
+
+            return;
+        }
+
+
+        // Detener reproducción anterior sin
+        // eliminar los clips preparados.
+
+        StopAllCoroutines();
+
+        ClearActiveSources();
+
+
+        isPaused = false;
+
+        isPlaying = true;
+
+        pauseStartedAt = 0.0;
+
+        accumulatedPause = 0.0;
 
 
         StartCoroutine(
-            PlayPattern()
+            PlaySynchronizedPattern(startTime)
         );
+
+
+        if (printDebug)
+        {
+            Debug.Log(
+                "DrumPlayer | Inicio DSP: " +
+                startTime.ToString("F4")
+            );
+        }
     }
 
-    private IEnumerator PlayPattern()
+
+    // ==========================================
+    // REPRODUCCION MEDIANTE RELOJ DSP
+    // ==========================================
+
+    private IEnumerator PlaySynchronizedPattern(
+        double startTime)
     {
-        if (bpm <= 0f)
+        double endTime =
+            startTime + preparedDuration;
+
+
+        if (printDebug)
         {
-            bpm = 120f;
+            Debug.Log(
+                "INICIANDO BATERÍA SINCRONIZADA"
+            );
         }
 
 
-        isPlaying = true;
-        isPaused = false;
-
-
-        float secondsPerBeat =
-            60f / bpm;
-
-
-        float currentTime = 0f;
-
-
-        pattern.notes.Sort(
-            (a, b) =>
-                a.position.CompareTo(
-                    b.position
-                )
-        );
-
-
-        Debug.Log(
-            "================================"
-        );
-
-        Debug.Log(
-            "INICIANDO BATERÍA"
-        );
-
-        Debug.Log(
-            "BPM: " +
-            bpm
-        );
-
-        Debug.Log(
-            "================================"
-        );
-
-
         foreach (
-            DrumNoteData note
-            in pattern.notes
+            ScheduledDrumNote note
+            in scheduledNotes
         )
         {
-            float waitTime =
-                note.position -
-                currentTime;
+            // Esperar la posición absoluta
+            // de cada evento musical.
 
-
-            if (waitTime > 0f)
+            while (
+                isPaused ||
+                AudioSettings.dspTime <
+                startTime +
+                note.position +
+                accumulatedPause
+            )
             {
-                yield return WaitWithPause(
-                    waitTime * secondsPerBeat
-                );
+                yield return null;
             }
 
 
             PlayDrumNote(note);
 
 
-            currentTime =
-                note.position;
+            // Considerar posibles retrasos
+            // de ejecución entre frames.
+
+            double actualEnd =
+                AudioSettings.dspTime -
+                accumulatedPause +
+                note.clip.length;
+
+
+            endTime = System.Math.Max(
+                endTime,
+                actualEnd
+            );
+        }
+
+
+        // Esperar que terminen todos
+        // los golpes y sus colas.
+
+        while (
+            isPaused ||
+            AudioSettings.dspTime <
+            endTime + accumulatedPause
+        )
+        {
+            yield return null;
         }
 
 
         isPlaying = false;
 
-
-        Debug.Log(
-            "Batería terminada."
-        );
-    }
-
-    private IEnumerator WaitWithPause(
-        float duration
-    )
-    {
-        float remaining = duration;
+        isPaused = false;
 
 
-        while (remaining > 0f)
+        ClearActiveSources();
+
+
+        if (printDebug)
         {
-            if (!isPaused)
-            {
-                remaining -= Time.deltaTime;
-            }
-
-
-            yield return null;
+            Debug.Log(
+                "Batería terminada."
+            );
         }
     }
 
+
+    // ==========================================
+    // REPRODUCIR GOLPE DE BATERIA
+    // ==========================================
+
     private void PlayDrumNote(
-        DrumNoteData note
-    )
+        ScheduledDrumNote note)
     {
-        AudioClip clip =
-            drumSynthesizer.GenerateDrum(
-                note.midiNote,
-                note.duration,
-                note.velocity
-            );
-
-
-        if (clip == null)
+        if (note.clip == null)
         {
             return;
         }
@@ -257,17 +600,25 @@ public class DrumPlayer : MonoBehaviour
             );
 
 
-        drumObject.transform.parent =
-            transform;
+        drumObject.transform.SetParent(
+            transform,
+            false
+        );
 
 
         AudioSource source =
             drumObject.AddComponent<AudioSource>();
 
 
-        source.clip = clip;
+        source.clip = note.clip;
+
         source.volume = volume;
+
         source.playOnAwake = false;
+
+        source.loop = false;
+
+        source.spatialBlend = 0f;
 
 
         if (playbackMixerGroup != null)
@@ -287,33 +638,46 @@ public class DrumPlayer : MonoBehaviour
             DestroyDrumSourceWhenFinished(
                 drumObject,
                 source,
-                clip.length
+                note.clip.length
             )
         );
     }
 
+
+    // ==========================================
+    // LIMPIEZA DE CADA GOLPE
+    // ==========================================
+
     private IEnumerator DestroyDrumSourceWhenFinished(
         GameObject drumObject,
         AudioSource source,
-        float duration
-    )
+        float duration)
     {
-        float remaining = duration;
+        double finishTime =
+            AudioSettings.dspTime +
+            duration -
+            accumulatedPause;
 
 
-        while (remaining > 0f)
+        while (
+            isPaused ||
+            AudioSettings.dspTime <
+            finishTime + accumulatedPause
+        )
         {
-            if (!isPaused)
-            {
-                remaining -= Time.deltaTime;
-            }
-
-
             yield return null;
         }
 
 
         activeSources.Remove(source);
+
+
+        if (source != null)
+        {
+            source.Stop();
+
+            source.clip = null;
+        }
 
 
         if (drumObject != null)
@@ -322,45 +686,46 @@ public class DrumPlayer : MonoBehaviour
         }
     }
 
+
+    // ==========================================
+    // REPRODUCCION INDIVIDUAL
+    // ==========================================
+
     public void Play()
     {
-        if (pattern == null)
+        if (!PrepareSynchronizedPlayback())
         {
-            pattern =
-                patternGenerator.GenerateBasicPattern();
+            return;
         }
 
 
-        StopAllCoroutines();
+        double startTime =
+            AudioSettings.dspTime +
+            startDelay;
 
 
-        isPaused = false;
-        isPlaying = false;
-
-
-        if (
-            useMusicXMLTempo &&
-            musicReader != null &&
-            musicReader.isReady
-        )
-        {
-            bpm =
-                musicReader.musicData.tempo;
-        }
-
-
-        StartCoroutine(
-            PlayPattern()
-        );
+        PlaySynchronized(startTime);
     }
+
+
+    // ==========================================
+    // PAUSAR REPRODUCCION
+    // ==========================================
 
     public void PausePlayback()
     {
-        if (!isPlaying)
+        if (!isPlaying ||
+            isPaused)
+        {
             return;
+        }
 
 
         isPaused = true;
+
+
+        pauseStartedAt =
+            AudioSettings.dspTime;
 
 
         foreach (
@@ -375,14 +740,34 @@ public class DrumPlayer : MonoBehaviour
         }
 
 
-        Debug.Log(
-            "DrumPlayer → PAUSADO"
-        );
+        if (printDebug)
+        {
+            Debug.Log(
+                "DrumPlayer → PAUSADO"
+            );
+        }
     }
+
+
+    // ==========================================
+    // REANUDAR REPRODUCCION
+    // ==========================================
+
     public void ResumePlayback()
     {
-        if (!isPlaying)
+        if (!isPlaying ||
+            !isPaused)
+        {
             return;
+        }
+
+
+        accumulatedPause +=
+            AudioSettings.dspTime -
+            pauseStartedAt;
+
+
+        pauseStartedAt = 0.0;
 
 
         isPaused = false;
@@ -400,43 +785,161 @@ public class DrumPlayer : MonoBehaviour
         }
 
 
-        Debug.Log(
-            "DrumPlayer → REANUDADO"
-        );
+        if (printDebug)
+        {
+            Debug.Log(
+                "DrumPlayer → REANUDADO"
+            );
+        }
     }
+
+
+    // ==========================================
+    // DETENER REPRODUCCION
+    // ==========================================
 
     public void StopPlayback()
     {
         isPaused = false;
+
         isPlaying = false;
+
+        pauseStartedAt = 0.0;
+
+        accumulatedPause = 0.0;
 
 
         StopAllCoroutines();
 
 
-        AudioSource[] sources =
-            GetComponentsInChildren<AudioSource>(
-                true
+        ClearActiveSources();
+
+        ClearPreparedNotes();
+
+
+        if (printDebug)
+        {
+            Debug.Log(
+                "DrumPlayer → DETENIDO"
             );
+        }
+    }
 
 
+    // ==========================================
+    // LIMPIAR FUENTES DE AUDIO
+    // ==========================================
+
+    private void ClearActiveSources()
+    {
         foreach (
             AudioSource source
-            in sources
+            in activeSources
         )
         {
-            if (source != null)
+            if (source == null)
             {
-                source.Stop();
+                continue;
             }
+
+
+            source.Stop();
+
+            source.clip = null;
+
+
+            Destroy(
+                source.gameObject
+            );
         }
 
 
         activeSources.Clear();
+    }
 
 
-        Debug.Log(
-            "DrumPlayer → DETENIDO"
-        );
+    // ==========================================
+    // LIMPIAR EVENTOS Y CLIPS
+    // ==========================================
+
+    private void ClearPreparedNotes()
+    {
+        scheduledNotes.Clear();
+
+
+        foreach (
+            AudioClip clip
+            in generatedClips
+        )
+        {
+            if (clip != null)
+            {
+                Destroy(clip);
+            }
+        }
+
+
+        generatedClips.Clear();
+
+
+        preparedDuration = 0f;
+
+        isPrepared = false;
+    }
+
+
+    // ==========================================
+    // CICLO DE VIDA
+    // ==========================================
+
+    private void OnDisable()
+    {
+        StopPlayback();
+    }
+
+
+    private void OnDestroy()
+    {
+        StopPlayback();
+    }
+    // ==========================================
+    // EVENTOS PARA EXPORTACION WAV
+    // ==========================================
+
+    public List<AudioRenderEvent> GetRenderEvents()
+    {
+        List<AudioRenderEvent> result =
+            new List<AudioRenderEvent>();
+
+
+        foreach (var note in scheduledNotes)
+        {
+            if (note.clip == null)
+            {
+                continue;
+            }
+
+
+            result.Add(
+                new AudioRenderEvent(
+                    note.clip,
+                    note.position,
+                    volume
+                )
+            );
+        }
+
+
+        return result;
+    }
+
+
+    // ==========================================
+    // DURACION PARA EXPORTACION
+    // ==========================================
+
+    public float GetRenderDuration()
+    {
+        return preparedDuration;
     }
 }

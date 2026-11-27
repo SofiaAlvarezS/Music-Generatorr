@@ -11,7 +11,7 @@ public class DrumSynthesizer : MonoBehaviour
     public float kickLevel = 0.9f;
 
     [Range(0f, 1f)]
-    public float snareLevel = 0.7f;
+    public float snareLevel = 0.3f;
 
     [Range(0f, 1f)]
     public float hiHatLevel = 0.45f;
